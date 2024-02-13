@@ -1,2 +1,2 @@
 # SpotyUtil
-A tool to complete various tasks using the Spotify API
+A command line tool to complete various tasks using the Spotify API
