@@ -26,9 +26,11 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="datafiles\compilerData.txt" />
+    <Content Include="example dataFiles\compilerData.txt" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="datafiles" />
+    <Folder Include="example dataFiles\" />
     <Folder Include="util" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />

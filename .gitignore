@@ -1,3 +1,5 @@
 /venv/
 /datafiles/**
 /output/
+/.vs/
+/.git/
