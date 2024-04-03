@@ -1,5 +1,6 @@
-/venv/
+/env/
 /datafiles/**
 /output/
 /.vs/
 /.git/
+__pycache__/

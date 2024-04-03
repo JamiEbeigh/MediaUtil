@@ -1,6 +1,6 @@
 from util import CredentialsManager
-from PodcastCompiler import SpotifyPlaylistCompiler
-from LibraryDownloader import Downloader
+from modules.PodcastCompiler import SpotifyPlaylistCompiler
+from modules.LibraryDownloader import Downloader
 
 
 SpotifyCredentialsFile = "./datafiles/SpotifyCredentials.txt"
@@ -8,17 +8,14 @@ CompilerDataFile = "./datafiles/compilerData.txt"
 
 def runDownloader():
   # get the client credentials
-  success, clientId, clientSecret = CredentialsManager.getSpotifyCredentials(SpotifyCredentialsFile)
+  hasCreds, clientId, clientSecret = CredentialsManager.getSpotifyCredentials(SpotifyCredentialsFile)
   
   # check if the crednetials were retrieved successfully
-  if not success:
+  if not hasCreds:
     print("Could not load spotify credentials from", SpotifyCredentialsFile)
 
-  print( "ID:", clientId )
-  print( "SE:", clientSecret)
-
   dl = Downloader( clientId, clientSecret, "output/downloader/")
-  dl.downloadFullLibrary()
+  dl.downloadFullLibrary( True )
 
 def runCompiler():
   # get the client credentials
@@ -30,8 +27,10 @@ def runCompiler():
     
   # instantiate the class
   pc = SpotifyPlaylistCompiler(CompilerDataFile, clientId, clientSecret)
+
   # add podcasts to playlist
   pc.addAllPodcastsToPlaylist()
+  
   # update and save the datafile
   pc.updateDataFile()
 
