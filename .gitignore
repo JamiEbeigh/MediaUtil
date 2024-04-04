@@ -4,3 +4,4 @@
 /.vs/
 /.git/
 __pycache__/
+/output/downloader/**

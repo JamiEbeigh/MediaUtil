@@ -1,0 +1,3 @@
+outputDir=.\output\downloader\
+onlyMyPlaylists=True
+excludePlaylists=Discover Weekly

@@ -5,6 +5,7 @@ from modules.LibraryDownloader import Downloader
 
 SpotifyCredentialsFile = "./datafiles/SpotifyCredentials.txt"
 CompilerDataFile = "./datafiles/compilerData.txt"
+DownloaderOptions = "./datafiles/downloaderOptions.txt"
 
 def runDownloader():
   # get the client credentials
@@ -14,7 +15,7 @@ def runDownloader():
   if not hasCreds:
     print("Could not load spotify credentials from", SpotifyCredentialsFile)
 
-  dl = Downloader( clientId, clientSecret, "output/downloader/")
+  dl = Downloader( clientId, clientSecret, DownloaderOptions)
   dl.downloadFullLibrary( True )
 
 def runCompiler():
