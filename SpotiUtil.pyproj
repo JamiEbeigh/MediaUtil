@@ -5,7 +5,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{e2f6666c-251f-451b-8630-7bb8a6f10fbe}</ProjectGuid>
     <ProjectHome />
-    <StartupFile>main.py</StartupFile>
+    <StartupFile>modules\LibraryDownloader.py</StartupFile>
     <SearchPath />
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>
@@ -29,6 +29,7 @@
   <ItemGroup>
     <Content Include=".gitignore" />
     <Content Include="datafiles\compilerData.txt" />
+    <Content Include="datafiles\downloaderOptions.txt" />
     <Content Include="datafiles\SpotifyCredentials.txt" />
     <Content Include="example dataFiles\compilerData.txt" />
     <Content Include="example dataFiles\SpotifyCredentials.txt" />
@@ -39,6 +40,8 @@
     <Folder Include="datafiles" />
     <Folder Include="example dataFiles\" />
     <Folder Include="modules\" />
+    <Folder Include="output\" />
+    <Folder Include="output\downloader\" />
     <Folder Include="util" />
   </ItemGroup>
   <ItemGroup>
