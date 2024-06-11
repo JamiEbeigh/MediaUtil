@@ -11,6 +11,7 @@ import youtube_dl
 import yt_dlp
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC
+from datetime import datetime as dt
 
 class Downloader:
   '''
@@ -73,22 +74,31 @@ class Downloader:
     iterate through self.songs, search youtube for each song and download it as an .mp3
     '''
 
-    # create a listing of songs that have already been downloaded 
-    #   so we don't waste time downloading the same songs twice
-    alreadyDownloaded = [f.replace(".mp3", "") for f in os.listdir( self._options.outputDir )]
+    startTime = dt.now()
+
+    if not os.path.exists(os.path.join(self._options.outputDir, "tracks")):
+      os.mkdir(os.path.join(self._options.outputDir, "tracks"))
+
+    collected = 0
+    total = len( self.songs )
 
     # loop through songs collected from spotify 
     for i, id in enumerate(self.songs):
       # print to console 
-      if verbose: printProgress("Downloading Songs", i, len(self.songs))
+      if verbose: printProgress("Downloading Songs", collected, total, startTime)
 
       # get the track object
       track = self.songs[id]
 
       # download the song and save it to the output directory
-      self._downloadOneSong( track, alreadyDownloaded )
+      downloadResult = self._downloadOneSong( track )
 
-  def _downloadOneSong(self, track, alreadyDownloaded):
+      if downloadResult == None:
+        total -= 1
+      elif downloadResult:
+        collected += 1
+
+  def _downloadOneSong(self, track ):
     '''
     search youtube for a song and download the audio
 
@@ -96,26 +106,37 @@ class Downloader:
       track - the spotify object for the song
       alreadyDownloaded - a list of "<artist> - <song title>" containing the songs which have already been downloaded
     '''
-    
-    # get relevant data from the track object
-    songTitle, artist, album, duration, imgLoc = self._getTrackData(track)
-    
+
     # set the file name to <artist> - <title> but don't append the '.mp3' yet
-    fileName = f'{artist} - {songTitle}'
+    fileName = os.path.join( self._options.outputDir, "tracks", track.artist, track.album, track.songTitle )
+
+    if not os.path.exists( os.path.join( self._options.outputDir, "tracks", track.artist ) ):
+      os.mkdir(os.path.join(self._options.outputDir, "tracks", track.artist ) )
+
+    if not os.path.exists( os.path.join( self._options.outputDir, "tracks", track.artist, track.album ) ):
+      os.mkdir(os.path.join( self._options.outputDir, "tracks", track.artist, track.album ))
 
     # check if this song has already been downloaded 
-    if fileName in alreadyDownloaded:
+    if os.path.exists(fileName + ".mp3"):
       # return if it has 
-      return
+      return None
 
     # get find the correct youtube video and find a link 
-    ytLink = self._findYoutubeVideo(songTitle, artist, duration)
+    ytLink = self._findYoutubeVideo(track.songTitle, track.artist, track.duration)
+
+    if ytLink == None:
+      return False
 
     # download the file and assign a variable to the new location 
     fileLoc = self._downloadFromYoutube(fileName, ytLink)
 
+    if ( fileLoc == "" ):
+      return False
+
     # set ID3/APIC metadata for the file 
-    self._setFileMeta(fileLoc, songTitle, artist, album, imgLoc)
+    self._setFileMeta(fileLoc, track.songTitle, track.artist, track.album, track.imgLoc)
+
+    return True
       
   def _getTrackData(self, track):
     '''
@@ -130,6 +151,14 @@ class Downloader:
       duration - song duration in miliseconds 
       imgLoc - URL where the album cover can be retrieved from
     '''
+
+    id = track['id'] \
+      .replace('?', '') \
+      .replace('/', '') \
+      .replace('\\', '') \
+      .replace('\'', '') \
+      .replace('\"', '') \
+      .replace('.', '')
 
     # get the song title, strip off any special chars
     songTitle = track['name'] \
@@ -165,7 +194,7 @@ class Downloader:
     imgLoc = track['album']['images'][0]['url']
 
     # return values
-    return songTitle, artist, album, duration, imgLoc
+    return id, songTitle, artist, album, duration, imgLoc
 
   def _findYoutubeVideo(self, songTitle, artist, spDuration):
     '''
@@ -180,7 +209,10 @@ class Downloader:
     '''
 
     # search youtube for the song
-    s = yts.Search(F'{artist} {songTitle}')
+    try:
+      s = yts.Search(F'{artist} {songTitle}')
+    except:
+      return None
 
     # instantiate vars for the closest match
     closestMatch = ''
@@ -201,7 +233,7 @@ class Downloader:
       if len(durationParts) == 2:
         mins = int(durationParts[0])
         secs = int(durationParts[1])
-      if len(durationParts) == 1:
+      elif len(durationParts) == 1:
         mins = 0
         secs = int(durationParts[0])
       else:
@@ -221,9 +253,8 @@ class Downloader:
     # once we've checked each option, return the closest match 
     return closestMatch
 
-  def _downloadFromYoutube(self, fileName, ytLink):
-    saveLoc = os.path.join(self._options.outputDir, f'{fileName}' )
-    saveLoc = os.path.abspath( saveLoc )
+  def _downloadFromYoutube(self, fileName, ytLink ):
+    saveLoc = os.path.abspath( fileName )
 
     ydl_opts = {
       'format': 'bestaudio/best',
@@ -242,9 +273,11 @@ class Downloader:
       }]
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info_dict = ydl.extract_info([ytLink][0], download=True)
-      
+    try:
+      with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info_dict = ydl.extract_info(ytLink, download=True)
+    except:
+      return ""
     # extract the name of the downloaded file from the info_dict
     fileLoc = ydl.prepare_filename(info_dict)
 
@@ -293,6 +326,17 @@ class Downloader:
       max - max songs to gather (for testing)
     '''
 
+    startTime = dt.now()
+
+    # get data from file
+    libDataFileLoc = os.path.join(self._options.outputDir, ".data", "songs")
+    if os.path.exists(libDataFileLoc):
+      with open(libDataFileLoc, 'r', encoding="utf-8") as f:
+        for l in f.readlines():
+          s = Song.fromText(l)
+
+          self.songs[s.id] = s
+
     limit = 20 # how many tracks to return per api call
     offset = 0 # how many tracks to offset api call by
 
@@ -300,7 +344,7 @@ class Downloader:
     #   so we don't pull too many values
     if max < 20:
       limit = max
-      
+
     # get the user's tracks from the spotify api 
     tracks = self.sp.current_user_saved_tracks(limit, offset)
     
@@ -308,31 +352,53 @@ class Downloader:
     #   method will stop before we pull this many songs)
     total = tracks['total']
 
+    if total == len(self.songs.keys()):
+      if verbose: printProgress("Collecting Songs", total, total, startTime)
+      return
+
     # loop until the offset value is greater than the total or max number of songs to retrieve
     while offset < total and offset < max:
       # add the limit value to the offset so our next call will pull the next page of songs
       offset += limit
       
       # log our progress
-      if verbose: printProgress("Collecting Songs", offset, total)
+      if verbose: printProgress("Collecting Songs", offset, total, startTime)
       
       # loop through songs retrieved from the request
       for item in tracks['items']:
         # assign the track to a var 
         track = item['track']
-        
+
+        id, songTitle, artist, album, duration, imgLoc = self._getTrackData(track)
+        song = Song(id, songTitle, artist, album, duration, imgLoc)
+
         # make sure we don't have this song already 
-        if not track['id'] in self.songs:
+        if not id in self.songs:
           # add this song to the songs dict, indexed by its spotify id
-          self.songs[track['id']] = track
+          self.songs[id] = song
 
       # send the next request 
       tracks = self.sp.current_user_saved_tracks(limit, offset)
 
+    # save songs datafile
+    songsTxt = ""
+
+    for s in self.songs.values():
+      songsTxt += s.toText()
+
+    dataFolder = os.path.join(self._options.outputDir, ".data")
+    if not os.path.exists(dataFolder):
+      os.mkdir(dataFolder)
+
+    with open(libDataFileLoc, mode='w', encoding="utf-8") as f:
+      f.write(songsTxt)
+
     # log our progress
-    if verbose: printProgress("Collecting Songs", offset, total)
+    if verbose: printProgress("Collecting Songs", offset, total, startTime)
     
   def _getPlaylistData(self, verbose:bool=True, max=-1):
+    startTime = dt.now()
+
     # get listing of playlists and add their IDs as keys to the self.playlists dict
     limit = 50
     offset = 0
@@ -348,8 +414,7 @@ class Downloader:
         if max != -1 and i > max:
           break
 
-
-        if verbose: printProgress("Collecting playlists", i + offset, playlistCount)
+        if verbose: printProgress("Collecting playlists", i + offset, playlistCount, startTime)
         pi = self.sp.playlist(playlist['id'])
 
         if pi['name'] in self._options.excludePlaylists:
@@ -370,17 +435,21 @@ class Downloader:
 
       offset += limit
       if offset > playlistCount or i > max: break
-   
+
+    if verbose: printProgress("Collecting playlists", i + offset, playlistCount, startTime)
+
   def _saveAllPlaylists(self, verbose:bool=True):
+    startTime = dt.now()
     outDir = os.path.join( self._options.outputDir, "playlists")
 
     if not os.path.exists( outDir ):
       os.mkdir( outDir )
 
     for i, id in enumerate(self.playlists):
-      if verbose: printProgress("Saving playlists", i+1, len(self.playlists))
+      if verbose: printProgress("Saving playlists", i+1, len(self.playlists), startTime)
       pl = self.playlists[id]
       self._savePlaylistToFile(pl, outDir)
+    if verbose: printProgress("Saving playlists", i + 1, len(self.playlists), startTime)
 
   def _savePlaylistToFile(self, playlistObject, outputDir ):
     playlistName = playlistObject['name']
@@ -434,15 +503,15 @@ class DownloaderOptions:
     with open(dataFile, 'r') as f:
       for l in f.readlines():
         splitIndex = l.find( "=" )
-        key = l[:splitIndex].strip("\n")
-        val = l[splitIndex+1:].strip("\n")
+        key = l[:splitIndex].strip(" \n")
+        val = l[splitIndex+1:].strip(" \n")
 
         if key == "excludePlaylists":
-          self.excludePlaylists = [x.strip('\'') for x in val.split(',')]
+          self.excludePlaylists = [x.strip('\'\"') for x in val.split(',')]
         if key == "outputDir":
-          self.outputDir = str(val)
+          self.outputDir = str(val).strip('\"\' ')
         if key == "onlyMyPlaylists":
-          self.onlyMyPlaylists = val.upper() == "TRUE"
+          self.onlyMyPlaylists = val.upper().strip('\"\' ') == "TRUE"
 
 
 class loggerOutputs:
@@ -455,3 +524,40 @@ class loggerOutputs:
     def debug(msg):
         # print("Captured Log: "+msg)
         pass
+
+
+class Song:
+  id = ""
+  songTitle = ""
+  artist = ""
+  album = ""
+  duration = -1
+  imgLoc = ""
+
+  def __init__(self, id, songTitle, artist, album, duration, imgLoc):
+    self.id = id
+    self.songTitle = songTitle.replace("|", '')
+    self.artist = artist.replace("|", '')
+    self.album = album.replace("|", '')
+    self.duration = duration
+    self.imgLoc = imgLoc
+
+  @staticmethod
+  def fromText(line):
+    line = line.strip('\n')
+    lineParts = line.split('|')
+
+    if len(lineParts) != 6:
+      return None
+
+    id = lineParts[0]
+    songTitle = lineParts[1]
+    artist = lineParts[2]
+    album = lineParts[3]
+    duration = int(lineParts[4])
+    imgLoc = lineParts[5]
+
+    return Song( id, songTitle, artist, album, duration, imgLoc )
+
+  def toText(self):
+    return f"{self.id}|{self.songTitle}|{self.artist}|{self.album}|{self.duration}|{self.imgLoc}\n"

@@ -13,10 +13,12 @@ def getSpotifyCredentials(txtFile: str):
   with open(txtFile) as f:
     for l in f.readlines():
       if l.startswith("ClientId:"):
-        clientId = l.lstrip("ClientId:").strip(' \n')
+        clientId = l.lstrip("ClientId:").strip(' \n"')
       if l.startswith("ClientSecret:"):
-        clientSecret = l.lstrip("ClientSecret:").strip(' \n')
+        clientSecret = l.lstrip("ClientSecret:").strip(' \n"')
   
-  if clientId.replace('X', '') != "" and clientSecret.replace('X', '') != "":
-    return True, clientId, clientSecret
-  return False, "", ""
+  if clientId.replace('X', '') == "" or clientSecret.replace('X', '') == "":
+    return False, "", ""
+
+  return True, clientId, clientSecret
+
