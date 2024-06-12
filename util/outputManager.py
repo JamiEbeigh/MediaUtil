@@ -3,17 +3,16 @@ import math
 import datetime as dt
 from token import PERCENT
 
-
 def printProgress( message, completed, total, startTime, barLen=20, messagePad=20, padChar='.' ):
   #'█' '▓' '▒' '░'
 
   timeElapsed = dt.datetime.now() - startTime
-  percentage = completed / total
+  percentage = 0 if total == 0 else completed / total
 
   timeLeft = "Estimating Time"
 
   if percentage > 0 and timeElapsed.total_seconds() > 1:
-    secondsLeft = timeElapsed.total_seconds() / percentage
+    secondsLeft = timeElapsed.total_seconds() / percentage if percentage > 0 else 0
     m, s = divmod(secondsLeft, 60)
     h, m = divmod(m, 60)
     timeLeft = f'~{int(h):d}:{int(m):02d}:{int(s):02d}'
@@ -38,3 +37,6 @@ def printProgress( message, completed, total, startTime, barLen=20, messagePad=2
       F'[{blockTxt}]',
       F'({completed}/{total}; {percentage:.1%})'
     )
+    return False
+  return True
+  

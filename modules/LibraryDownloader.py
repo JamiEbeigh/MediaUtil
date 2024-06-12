@@ -1,4 +1,3 @@
-from msilib.schema import Verb
 import os
 import sys
 import requests
@@ -10,7 +9,7 @@ import youtubesearchpython as yts
 import youtube_dl
 import yt_dlp
 from mutagen.easyid3 import EasyID3
-from mutagen.id3 import ID3, APIC
+from mutagen.id3 import ID3, APIC, TRCK
 from datetime import datetime as dt
 
 class Downloader:
@@ -52,7 +51,7 @@ class Downloader:
     u = self.sp.current_user()
     self._spCurrentUser = u['display_name']
 
-  def downloadFullLibrary(self, verbose:bool=True):
+  def downloadFullLibrary(self, verbose:bool=True, collectPlaylists:bool=False):
     '''
     Download all songs in your spotify library and compile .txt files contating playlist data
     '''
@@ -60,15 +59,17 @@ class Downloader:
     # get user's "liked songs" via the spotify api
     self._getLibraryData(verbose)
 
-    # get user's playlist information via the spotify api
-    self._getPlaylistData(verbose)
+    if collectPlaylists:
+      # get user's playlist information via the spotify api
+      self._getPlaylistData(verbose)
 
-    # save playlists to .txt files
-    self._saveAllPlaylists(verbose)
+      # save playlists to .txt files
+      self._saveAllPlaylists(verbose)
 
     # search youtube for songs and download them as mp3
     self._downloadAllSongs(verbose)
   
+  #region downloadSongs
   def _downloadAllSongs(self, verbose:bool=True):
     '''
     iterate through self.songs, search youtube for each song and download it as an .mp3
@@ -85,7 +86,7 @@ class Downloader:
     # loop through songs collected from spotify 
     for i, id in enumerate(self.songs):
       # print to console 
-      if verbose: printProgress("Downloading Songs", collected, total, startTime)
+      if verbose: verbose = printProgress("Downloading Songs", collected, total, startTime)
 
       # get the track object
       track = self.songs[id]
@@ -97,6 +98,9 @@ class Downloader:
         total -= 1
       elif downloadResult:
         collected += 1
+      
+      # if collected % 50 == 0:
+      #   self._saveAllPlaylists()
 
   def _downloadOneSong(self, track ):
     '''
@@ -118,6 +122,7 @@ class Downloader:
 
     # check if this song has already been downloaded 
     if os.path.exists(fileName + ".mp3"):
+      track.fileLoc = os.path.abspath(fileName + '.mp3')
       # return if it has 
       return None
 
@@ -132,12 +137,16 @@ class Downloader:
 
     if ( fileLoc == "" ):
       return False
+    
+    track.fileLoc = os.path.abspath(fileLoc)
 
     # set ID3/APIC metadata for the file 
-    self._setFileMeta(fileLoc, track.songTitle, track.artist, track.album, track.imgLoc)
+    self._setFileMeta(fileLoc, track.songTitle, track.artist, track.album, track.trackNum, track.imgLoc)
 
     return True
-      
+  #endregion
+  
+  #region spotify api
   def _getTrackData(self, track):
     '''
     Get a few variables from the track object 
@@ -151,6 +160,9 @@ class Downloader:
       duration - song duration in miliseconds 
       imgLoc - URL where the album cover can be retrieved from
     '''
+    
+    if track['type'] == 'episode':
+      return None, None, None, None, None, None, None
 
     id = track['id'] \
       .replace('?', '') \
@@ -187,6 +199,9 @@ class Downloader:
       .replace('\"', '') \
       .replace('.', '')
 
+    albumTotal = track['album']['total_tracks']
+    trackNum = track['track_number']
+
     # get the track duration as an integer 
     duration = int(track['duration_ms'])
 
@@ -194,8 +209,158 @@ class Downloader:
     imgLoc = track['album']['images'][0]['url']
 
     # return values
-    return id, songTitle, artist, album, duration, imgLoc
+    return id, songTitle, artist, album, duration, f'{trackNum:02}/{albumTotal:02}', imgLoc
 
+  def _getLibraryData(self, verbose: bool = True, max=sys.maxsize):
+    '''
+    Retrieve all of a user's liked songs from the spotify api
+
+    PARAMETERS:
+      verbose - whether or not to log progress
+      max - max songs to gather (for testing)
+    '''
+  
+    startTime = dt.now()
+  
+    # get data from file
+    libDataFileLoc = os.path.join(self._options.outputDir, ".data", "songs")
+    if os.path.exists(libDataFileLoc):
+      with open(libDataFileLoc, 'r', encoding="utf-8") as f:
+        for l in f.readlines():
+          s = Song.fromText(l)
+        
+          self.songs[s.id] = s
+  
+    limit = 20  # how many tracks to return per api call
+    offset = 0  # how many tracks to offset api call by
+  
+    # if the max songs is less than 20, set the limit to the max value
+    #   so we don't pull too many values
+    if max < 20:
+      limit = max
+  
+    # get the user's tracks from the spotify api
+    tracks = self.sp.current_user_saved_tracks(limit, offset)
+  
+    # find the total number of songs that will be retrieved (if max is assigned, the
+    #   method will stop before we pull this many songs)
+    total = tracks['total']
+  
+    if total == len(self.songs.keys()):
+      if verbose: verbose = printProgress("Collecting Songs", total, total, startTime)
+      return
+  
+    # loop until the offset value is greater than the total or max number of songs to retrieve
+    while offset < total and offset < max:
+      # add the limit value to the offset so our next call will pull the next page of songs
+      offset += limit
+    
+      # log our progress
+      if verbose: verbose = printProgress("Collecting Songs", offset, total, startTime)
+    
+      # loop through songs retrieved from the request
+      for item in tracks['items']:
+        # assign the track to a var
+        track = item['track']
+      
+        id, songTitle, artist, album, duration, trackNumber, imgLoc = self._getTrackData(track)
+        
+        if ( id == None ):
+          continue
+        
+        song = Song(id, songTitle, artist, album, duration, trackNumber, imgLoc)
+      
+        # make sure we don't have this song already
+        if not id in self.songs:
+          # add this song to the songs dict, indexed by its spotify id
+          self.songs[id] = song
+    
+      # send the next request
+      tracks = self.sp.current_user_saved_tracks(limit, offset)
+  
+    # save songs datafile
+    songsTxt = ""
+  
+    for s in self.songs.values():
+      songsTxt += s.toText()
+  
+    dataFolder = os.path.join(self._options.outputDir, ".data")
+    if not os.path.exists(dataFolder):
+      os.mkdir(dataFolder)
+  
+    with open(libDataFileLoc, mode='w', encoding="utf-8") as f:
+      f.write(songsTxt)
+  
+    # log our progress
+    if verbose: verbose = printProgress("Collecting Songs", offset, total, startTime)
+
+  def _getPlaylistData(self, verbose: bool = True, max=-1):
+    startTime = dt.now()
+    
+    playlistsDir = os.path.join( self._options.outputDir, "playlists")
+    if not os.path.exists(playlistsDir):
+      os.mkdir(playlistsDir)
+    
+    existingPlaylists = os.listdir(playlistsDir)
+  
+    # get listing of playlists and add their IDs as keys to the self.playlists dict
+    limit = 50
+    offset = 0
+    i = 0
+  
+    while True:
+    
+      pl = self.sp.current_user_playlists(limit, offset)
+      playlistCount = pl['total']
+    
+      for i, playlist in enumerate(pl['items']):
+        i += 1
+        if max != -1 and i > max:
+          break
+      
+        if verbose: verbose = printProgress("Collecting playlists", i + offset, playlistCount, startTime)
+        
+        # if this playlist has been saved in the last day, ignore it
+        playlistFile = os.path.join(playlistsDir, playlist['name'] + '.m3u')
+        if os.path.exists(playlistFile):
+          timestamp = os.path.getmtime(playlistFile)
+          datestamp = dt.fromtimestamp(timestamp)
+          if (datestamp - dt.now()).days < 1:
+            continue
+        
+        pi = self.sp.playlist(playlist['id'])
+      
+        if pi['name'] in self._options.excludePlaylists:
+          continue
+        
+        if self._options.onlyMyPlaylists and pi['owner']['display_name'] != self._spCurrentUser:
+          continue
+
+        playlistObj = Playlist(pi['name'])
+        
+        for t in pi['tracks']['items']:
+          if (not 'track' in t) or (t['track'] == None):
+            continue
+          track = t['track']
+          if not track['id'] in self.songs:
+            id, songTitle, artist, album, duration, trackNumber, imgLoc = self._getTrackData(track)
+
+            if (id == None):
+              continue
+            
+            song = Song(id, songTitle, artist, album, duration, trackNumber, imgLoc)
+            self.songs[id] = song
+            playlistObj.songs.append(id)
+        
+        self.playlists[playlistObj.name] = playlistObj
+    
+      offset += limit
+      if offset > playlistCount + limit or i > max >= 0: break
+  
+    if verbose: verbose = printProgress("Collecting playlists", i + offset, playlistCount, startTime)
+  #endregion
+  
+  #region youtube download
   def _findYoutubeVideo(self, songTitle, artist, spDuration):
     '''
     Search youtube for the song and find the result with the closest duration to the spotify track 
@@ -282,162 +447,9 @@ class Downloader:
     fileLoc = ydl.prepare_filename(info_dict)
 
     return fileLoc
-
-  def _setFileMeta(self, fileLoc, title, artist, album, coverUrl):
-    '''
-    Set the ID3 and APIC data for an mp3 file to the values pulled from spotify
-
-    PARAMETERS: 
-      fileLoc - the mp3 file to be modified
-      title - song title
-      artist - song artist
-      album - album title
-      coverUrl - link to the album cover (retrieved from spotify)
-    '''
-
-    # set the ID3 data using mutigen
-    c = EasyID3(fileLoc + '.mp3')
-    c.clear() # clear all current tags before assigning new ones
-    c['title'] = title
-    c['artist'] = artist
-    c['album'] = album
-    c.save()
-
-    # send a get request to retrieve the cover art 
-    cover_data = requests.get(coverUrl).content
-    
-    # embed the cover art in the file
-    c = ID3(fileLoc + '.mp3')
-    c['APIC'] = APIC(
-      encoding=3,
-      mime='image/jpeg',
-      type=3, desc=u'Cover',
-      data=cover_data
-    )            
-
-    c.save()
-
-  def _getLibraryData(self, verbose:bool=True, max = sys.maxsize):
-    '''
-    Retrieve all of a user's liked songs from the spotify api
-
-    PARAMETERS: 
-      verbose - whether or not to log progress
-      max - max songs to gather (for testing)
-    '''
-
-    startTime = dt.now()
-
-    # get data from file
-    libDataFileLoc = os.path.join(self._options.outputDir, ".data", "songs")
-    if os.path.exists(libDataFileLoc):
-      with open(libDataFileLoc, 'r', encoding="utf-8") as f:
-        for l in f.readlines():
-          s = Song.fromText(l)
-
-          self.songs[s.id] = s
-
-    limit = 20 # how many tracks to return per api call
-    offset = 0 # how many tracks to offset api call by
-
-    # if the max songs is less than 20, set the limit to the max value 
-    #   so we don't pull too many values
-    if max < 20:
-      limit = max
-
-    # get the user's tracks from the spotify api 
-    tracks = self.sp.current_user_saved_tracks(limit, offset)
-    
-    # find the total number of songs that will be retrieved (if max is assigned, the 
-    #   method will stop before we pull this many songs)
-    total = tracks['total']
-
-    if total == len(self.songs.keys()):
-      if verbose: printProgress("Collecting Songs", total, total, startTime)
-      return
-
-    # loop until the offset value is greater than the total or max number of songs to retrieve
-    while offset < total and offset < max:
-      # add the limit value to the offset so our next call will pull the next page of songs
-      offset += limit
-      
-      # log our progress
-      if verbose: printProgress("Collecting Songs", offset, total, startTime)
-      
-      # loop through songs retrieved from the request
-      for item in tracks['items']:
-        # assign the track to a var 
-        track = item['track']
-
-        id, songTitle, artist, album, duration, imgLoc = self._getTrackData(track)
-        song = Song(id, songTitle, artist, album, duration, imgLoc)
-
-        # make sure we don't have this song already 
-        if not id in self.songs:
-          # add this song to the songs dict, indexed by its spotify id
-          self.songs[id] = song
-
-      # send the next request 
-      tracks = self.sp.current_user_saved_tracks(limit, offset)
-
-    # save songs datafile
-    songsTxt = ""
-
-    for s in self.songs.values():
-      songsTxt += s.toText()
-
-    dataFolder = os.path.join(self._options.outputDir, ".data")
-    if not os.path.exists(dataFolder):
-      os.mkdir(dataFolder)
-
-    with open(libDataFileLoc, mode='w', encoding="utf-8") as f:
-      f.write(songsTxt)
-
-    # log our progress
-    if verbose: printProgress("Collecting Songs", offset, total, startTime)
-    
-  def _getPlaylistData(self, verbose:bool=True, max=-1):
-    startTime = dt.now()
-
-    # get listing of playlists and add their IDs as keys to the self.playlists dict
-    limit = 50
-    offset = 0
-    i = 0
-
-    while True:
-
-      pl = self.sp.current_user_playlists(limit, offset)
-      playlistCount = pl['total']
-
-      for i, playlist in enumerate(pl['items']):
-        i+=1
-        if max != -1 and i > max:
-          break
-
-        if verbose: printProgress("Collecting playlists", i + offset, playlistCount, startTime)
-        pi = self.sp.playlist(playlist['id'])
-
-        if pi['name'] in self._options.excludePlaylists:
-          continue
-
-        if self._options.onlyMyPlaylists and pi['owner']['display_name'] != self._spCurrentUser:
-          continue
-
-        self.playlists[playlist['id']] = pi
-
-        for t in pi['tracks']['items']:
-          if (not 'track' in t) or (t['track'] == None):
-            continue
-          track = t['track']
-          if not track['id'] in self.songs:
-            self.songs[track['id']] = track 
-
-
-      offset += limit
-      if offset > playlistCount or i > max: break
-
-    if verbose: printProgress("Collecting playlists", i + offset, playlistCount, startTime)
-
+  #endregion
+  
+  #region save playlists
   def _saveAllPlaylists(self, verbose:bool=True):
     startTime = dt.now()
     outDir = os.path.join( self._options.outputDir, "playlists")
@@ -446,50 +458,62 @@ class Downloader:
       os.mkdir( outDir )
 
     for i, id in enumerate(self.playlists):
-      if verbose: printProgress("Saving playlists", i+1, len(self.playlists), startTime)
+      if verbose: verbose = printProgress("Saving playlists", i+1, len(self.playlists), startTime)
       pl = self.playlists[id]
       self._savePlaylistToFile(pl, outDir)
-    if verbose: printProgress("Saving playlists", i + 1, len(self.playlists), startTime)
+    if verbose: verbose = printProgress("Saving playlists", len(self.playlists), len(self.playlists), startTime)
 
   def _savePlaylistToFile(self, playlistObject, outputDir ):
-    playlistName = playlistObject['name']
+    fileStr = ""
     
-    fileStr = "Name\tArtist\tComposer\tAlbum\tGrouping\tWork\tMovement Number\tMovement Count\tMovement Name\tGenre" \
-              "\tSize\tTime\tDisc Number\tDisc Count\tTrack Number\tTrack Count\tYear\tDate Modified\tDate Added\t" \
-              "Bit Rate\tSample Rate\tVolume Adjustment\tKind\tEqualizer\tComments\tPlays\tLast Played\tSkips\t" \
-              "Last Skipped\tMy Rating\tLocation\n"
+    for trackid in playlistObject.songs:
+      song = self.songs[trackid]
+      fileStr += song.getM3uLine()
     
-    for t in playlistObject['tracks']['items']:
-      trackObject = t['track']
-      
-      if ( trackObject is None or trackObject['type'] != 'track' ):
-        continue
-      
-      fileStr += trackObject['name'] + '\t' # name
-      fileStr += ','.join([a['name'] for a in trackObject['artists']]) + '\t' # artist
-      fileStr += '\t' # composer
-      fileStr += trackObject['album']['name'] + '\t' # album
-      fileStr += '\t' # grouping
-      fileStr += '\t' # work
-      fileStr += '\t' # movement number
-      fileStr += '\t' # movement count
-      fileStr += '\t' # movement name
-      fileStr += '\t' # genre
-      fileStr += '\t' # size
-      fileStr += '\t' # time
-      fileStr += '\n'
-    
-    if ( len(fileStr.split('\n')) == 2 ):
-      return
-    
-    playlistName = playlistName \
-      .replace( '\\', ' ' ) \
-      .replace( '/', ' ' ) \
-      .replace( '?', ' ' )
-    
-    with open( os.path.join( outputDir, playlistName + ".txt"), 'w', encoding="utf-8" ) as f:
+    with open( os.path.join( outputDir, playlistObject.name + ".m3u"), 'w', encoding="utf-8" ) as f:
       f.write( fileStr )
+  #endregion
+  
+  #region file management
+  def _setFileMeta(self, fileLoc, title, artist, album, trackNum, coverUrl):
+    '''
+    Set the ID3 and APIC data for an mp3 file to the values pulled from spotify
 
+    PARAMETERS:
+      fileLoc - the mp3 file to be modified
+      title - song title
+      artist - song artist
+      album - album title
+      coverUrl - link to the album cover (retrieved from spotify)
+    '''
+  
+    track, totalTracks = trackNum.split('/')
+  
+    # set the ID3 data using mutigen
+    c = EasyID3(fileLoc + '.mp3')
+    c.clear()  # clear all current tags before assigning new ones
+    c['title'] = title
+    c['artist'] = artist
+    c['album'] = album
+    c['albumartist'] = artist
+    c['TRCK']: track
+    c.save()
+  
+    # send a get request to retrieve the cover art
+    cover_data = requests.get(coverUrl).content
+  
+    # embed the cover art in the file
+    c = ID3(fileLoc + '.mp3')
+    c['APIC'] = APIC(
+      encoding=3,
+      mime='image/jpeg',
+      type=3, desc=u'Cover',
+      data=cover_data
+    )
+    c['TRCK'] = TRCK(encoding=3, text=track)
+  
+    c.save()
+  #endregion
 
 class DownloaderOptions:
   excludePlaylists = []
@@ -497,7 +521,7 @@ class DownloaderOptions:
   onlyMyPlaylists = False
 
   def __init__(self, dataFile=""):
-    if dataFile == "":
+    if dataFile == "" or not os.path.exists(dataFile):
       return
 
     with open(dataFile, 'r') as f:
@@ -506,13 +530,39 @@ class DownloaderOptions:
         key = l[:splitIndex].strip(" \n")
         val = l[splitIndex+1:].strip(" \n")
 
-        if key == "excludePlaylists":
-          self.excludePlaylists = [x.strip('\'\"') for x in val.split(',')]
         if key == "outputDir":
           self.outputDir = str(val).strip('\"\' ')
         if key == "onlyMyPlaylists":
           self.onlyMyPlaylists = val.upper().strip('\"\' ') == "TRUE"
-
+        if key == "excludePlaylists":
+          self.excludePlaylists = self.parseList(val)
+  def parseList(self, valStr):
+    valsList = []
+    val = ""
+    i = 0
+    quote = False
+    
+    while i < len(valStr):
+      char = valStr[i]
+      
+      if char == '\"' or char == '\'':
+        quote = not quote
+        continue
+      
+      if char == ',' and not quote:
+        valsList.append(val.strip(' '))
+        val = ""
+        i += 1
+        continue
+      
+      if char == '\\':
+        i += 1
+        char = valStr[i]
+      
+      val += char
+      i += 1
+    
+    return valsList
 
 class loggerOutputs:
     def error(msg):
@@ -525,7 +575,6 @@ class loggerOutputs:
         # print("Captured Log: "+msg)
         pass
 
-
 class Song:
   id = ""
   songTitle = ""
@@ -533,13 +582,15 @@ class Song:
   album = ""
   duration = -1
   imgLoc = ""
+  fileLoc = ""
 
-  def __init__(self, id, songTitle, artist, album, duration, imgLoc):
+  def __init__(self, id, songTitle, artist, album, duration, trackNum, imgLoc):
     self.id = id
     self.songTitle = songTitle.replace("|", '')
     self.artist = artist.replace("|", '')
     self.album = album.replace("|", '')
     self.duration = duration
+    self.trackNum = trackNum
     self.imgLoc = imgLoc
 
   @staticmethod
@@ -547,7 +598,7 @@ class Song:
     line = line.strip('\n')
     lineParts = line.split('|')
 
-    if len(lineParts) != 6:
+    if len(lineParts) != 7:
       return None
 
     id = lineParts[0]
@@ -555,9 +606,23 @@ class Song:
     artist = lineParts[2]
     album = lineParts[3]
     duration = int(lineParts[4])
-    imgLoc = lineParts[5]
+    trackNum = lineParts[5]
+    imgLoc = lineParts[6]
 
-    return Song( id, songTitle, artist, album, duration, imgLoc )
+    return Song( id, songTitle, artist, album, duration, trackNum, imgLoc )
 
   def toText(self):
-    return f"{self.id}|{self.songTitle}|{self.artist}|{self.album}|{self.duration}|{self.imgLoc}\n"
+    return f"{self.id}|{self.songTitle}|{self.artist}|{self.album}|{self.duration}|{self.trackNum}|{self.imgLoc}\n"
+
+  def getM3uLine(self):
+    return f'{self.artist}/{self.album}/{self.fileLoc}\n'
+  
+class Playlist:
+  name = ""
+  songs = []
+  
+  def __init__(self, name):
+    self.name = name \
+      .replace( '\\', ' ' ) \
+      .replace( '/', ' ' ) \
+      .replace( '?', ' ' )
