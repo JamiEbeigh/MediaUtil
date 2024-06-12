@@ -1,5 +1,5 @@
 /env/
-/datafiles/**
+/dataFiles/**
 /output/
 /.vs/
 /.git/

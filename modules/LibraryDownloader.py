@@ -76,9 +76,11 @@ class Downloader:
     '''
 
     startTime = dt.now()
+    tracksDir = os.path.join(self._options.outputDir, "tracks")
+    tracksDirExists, trackDir = self._ensureDirectoryExists(tracksDir, self._options.outputDir)
 
-    if not os.path.exists(os.path.join(self._options.outputDir, "tracks")):
-      os.mkdir(os.path.join(self._options.outputDir, "tracks"))
+    if not tracksDirExists:
+      return
 
     collected = 0
     total = len( self.songs )
@@ -96,7 +98,7 @@ class Downloader:
 
       if downloadResult == None:
         total -= 1
-      elif downloadResult:
+      if downloadResult:
         collected += 1
       
       # if collected % 50 == 0:
@@ -112,18 +114,19 @@ class Downloader:
     '''
 
     # set the file name to <artist> - <title> but don't append the '.mp3' yet
-    fileName = os.path.join( self._options.outputDir, "tracks", track.artist, track.album, track.songTitle )
+    albumDir = os.path.join(self._options.outputDir, "tracks", track.artist, track.album)
+    albumDirExists, albumDir = self._ensureDirectoryExists(albumDir, self._options.outputDir)
+    fileName = os.path.join(albumDir, track.songTitle)
 
-    if not os.path.exists( os.path.join( self._options.outputDir, "tracks", track.artist ) ):
-      os.mkdir(os.path.join(self._options.outputDir, "tracks", track.artist ) )
-
-    if not os.path.exists( os.path.join( self._options.outputDir, "tracks", track.artist, track.album ) ):
-      os.mkdir(os.path.join( self._options.outputDir, "tracks", track.artist, track.album ))
+    if not albumDirExists:
+      return
 
     # check if this song has already been downloaded 
     if os.path.exists(fileName + ".mp3"):
+      # TODO: read metadata from the mp3 file and add it to the track object to be used later
+      #   when serializing playlists
       track.fileLoc = os.path.abspath(fileName + '.mp3')
-      # return if it has 
+      # return if it has
       return None
 
     # get find the correct youtube video and find a link 
@@ -285,8 +288,7 @@ class Downloader:
       songsTxt += s.toText()
   
     dataFolder = os.path.join(self._options.outputDir, ".data")
-    if not os.path.exists(dataFolder):
-      os.mkdir(dataFolder)
+    dataFolderExists, dataFolder = self._ensureDirectoryExists(dataFolder, self._options.outputDir)
   
     with open(libDataFileLoc, mode='w', encoding="utf-8") as f:
       f.write(songsTxt)
@@ -298,8 +300,7 @@ class Downloader:
     startTime = dt.now()
     
     playlistsDir = os.path.join( self._options.outputDir, "playlists")
-    if not os.path.exists(playlistsDir):
-      os.mkdir(playlistsDir)
+    playlistsDirExists, playlistsDir = self._ensureDirectoryExists(playlistsDir, self._options.outputDir)
     
     existingPlaylists = os.listdir(playlistsDir)
   
@@ -452,15 +453,14 @@ class Downloader:
   #region save playlists
   def _saveAllPlaylists(self, verbose:bool=True):
     startTime = dt.now()
-    outDir = os.path.join( self._options.outputDir, "playlists")
+    playlistsDir = os.path.join( self._options.outputDir, "playlists")
 
-    if not os.path.exists( outDir ):
-      os.mkdir( outDir )
+    playlistsDirExists, playlistsDir = self._ensureDirectoryExists(playlistsDir, self._options.outputDir)
 
     for i, id in enumerate(self.playlists):
       if verbose: verbose = printProgress("Saving playlists", i+1, len(self.playlists), startTime)
       pl = self.playlists[id]
-      self._savePlaylistToFile(pl, outDir)
+      self._savePlaylistToFile(pl, playlistsDir)
     if verbose: verbose = printProgress("Saving playlists", len(self.playlists), len(self.playlists), startTime)
 
   def _savePlaylistToFile(self, playlistObject, outputDir ):
@@ -513,6 +513,49 @@ class Downloader:
     c['TRCK'] = TRCK(encoding=3, text=track)
   
     c.save()
+
+  def _ensureDirectoryExists(self, dir, baseDir = ""):
+    # remove the filename from the dir if it has one
+    absDir = os.path.abspath(dir)
+    outputDirAbs =  os.path.abspath(self._options.outputDir)
+
+    # before we do all this other work, just check if the path exists and return True if it does
+    if os.path.exists(dir):
+      return True, dir
+
+    # if the base dir is not set, try to set it either to the output dir defined in the options,
+    #   or by getting the absolute path and replacing anything not in the dir var
+    if baseDir == "":
+      # if the dir is a child of the class's output dir
+      if dir.startswith(outputDirAbs):
+        # set the base dir to the output dir
+        baseDir = outputDirAbs
+        dir = absDir[len(outputDirAbs):]
+      else:
+        # get the absolute path from the dir var, then take everything in front of it
+        baseDir = absDir[:absDir.find(dir)]
+
+    # if the base dir can't be found, return false
+    if not os.path.exists(baseDir):
+      return False, ""
+
+    dirParts = dir.replace(baseDir, "").split( os.sep )
+    checkDir = baseDir
+
+    try:
+      for oneFolder in dirParts:
+        oneFolder = oneFolder.replace(':', '')
+
+        checkDir = os.path.join(checkDir, oneFolder)
+
+        if os.path.exists(checkDir):
+          continue
+
+        os.mkdir(checkDir)
+    except:
+      return False, ""
+    return True, checkDir
+
   #endregion
 
 class DownloaderOptions:

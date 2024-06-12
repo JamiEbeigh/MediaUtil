@@ -3,9 +3,9 @@ from modules.PodcastCompiler import SpotifyPlaylistCompiler
 from modules.LibraryDownloader import Downloader
 
 
-SpotifyCredentialsFile = "/Volumes/SHARED/media/music/.data/SpotifyCredentials.txt"
-CompilerDataFile = "/Volumes/SHARED/media/music/.data/compilerData.txt"
-DownloaderOptions = "/Volumes/SHARED/media/music/.data/downloaderOptions.txt"
+SpotifyCredentialsFile = "./dataFiles/SpotifyCredentials.txt"
+CompilerDataFile = "./dataFiles/compilerData.txt"
+DownloaderOptions = "./dataFiles/downloaderOptions.txt"
 
 def runDownloader():
   # get the client credentials
