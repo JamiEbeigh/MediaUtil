@@ -27,6 +27,7 @@ class Downloader:
   _options = None
   _spCurrentUser = ""
   _totalCollected = 0
+  _totalCollectedAtStart = 0
 
   playlists = {}
   songs = {}
@@ -55,48 +56,59 @@ class Downloader:
     u = self.sp.current_user()
     self._spCurrentUser = u['display_name']
 
-  def downloadFullLibrary(self, verbose:bool=True, collectPlaylists:bool=False):
+  def downloadFullLibrary(self, verbose:bool=True, collectPlaylists:bool=True):
     '''
     Download all songs in your spotify library and compile .txt files contating playlist data
     '''
 
-    # get user's "liked songs" via the spotify api
-    self._getLibraryData(verbose)
-
     if collectPlaylists:
       # get user's playlist information via the spotify api
       self._getPlaylistData(verbose)
-
-      # save playlists to .txt files
-      self._saveAllPlaylists(verbose)
+      
+    # get user's "liked songs" via the spotify api
+    self._getLibraryData(verbose)
 
     # search youtube for songs and download them as mp3
     self._downloadAllSongs(verbose)
+
+    if collectPlaylists:
+      # save playlists to .txt files
+      self._saveAllPlaylists(verbose)
   
   #region downloadSongs
-  def _downloadAllSongs(self, verbose:bool=True):
+  def _downloadAllSongs(self, verbose=True, parallel=True):
     '''
     iterate through self.songs, search youtube for each song and download it as an .mp3
     '''
 
     self._totalCollected = len(self.songs) - len(self.songsToDownload)
+    self._totalCollectedAtStart = self._totalCollected
 
     startTime = dt.now()
     tracksDir = os.path.join(self._options.outputDir, "tracks")
     tracksDirExists, trackDir = self._ensureDirectoryExists(tracksDir, self._options.outputDir)
 
-    printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime,
-                  startAmount=len(self.songs) - len(self.songsToDownload))
-
+    if verbose: verbose = printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime,
+                                        startAmount=len(self.songs) - len(self.songsToDownload))
     if not tracksDirExists:
       return
+    
+    if parallel:
+      loop = asyncio.get_event_loop()  # Have a new event loop
+      looper = asyncio.gather(*[self._downloadOneSongAsync(s, startTime) for s in self.songsToDownload])  # Run the loop
+      loop.run_until_complete(looper)
+    else:
+      for s in self.songsToDownload:
+        self._downloadOneSong(s)
 
-    loop = asyncio.get_event_loop()  # Have a new event loop
-    looper = asyncio.gather(*[self._downloadOneSong(s, startTime) for s in self.songsToDownload])  # Run the loop
-    loop.run_until_complete(looper)
+    self._saveFailedSongs()
+    self._serializeSongsFile(os.path.join(self._options.outputDir, ".data", "songs.txt"))
 
   @background
-  def _downloadOneSong(self, track, startTime=None):
+  def _downloadOneSongAsync( self, song, startTime=None ):
+    return self._downloadOneSong(song, startTime)
+    
+  def _downloadOneSong(self, song, startTime=None):
     '''
     search youtube for a song and download the audio
 
@@ -106,34 +118,38 @@ class Downloader:
     '''
 
     # set the file name to <artist> - <title> but don't append the '.mp3' yet
-    fileName = track.getSaveLoc(self._options.outputDir)
+    fileName = song.getSaveLoc(self._options.outputDir)
     albumDir = os.path.split(fileName)[0]
     albumDirExists, albumDir = self._ensureDirectoryExists(albumDir, self._options.outputDir)
 
     if not albumDirExists:
+      song.error = "Could not create artist/album directory"
       return
 
     # get find the correct youtube video and find a link 
-    ytLink = self._findYoutubeVideo(track.songTitle, track.artist, track.duration)
+    ytLink = self._findYoutubeVideo(song.songTitle, song.artist, song.duration)
 
     if ytLink == None:
+      song.error = "Could not find song on YouTube"
       return False
 
     # download the file and assign a variable to the new location 
     fileLoc = self._downloadFromYoutube(fileName, ytLink)
 
     if ( fileLoc == "" ):
+      song.error = "Error downloading song from YouTube"
       return False
     
-    track.fileLoc = os.path.abspath(fileLoc)
+    song.fileLoc = os.path.abspath(fileLoc)
 
     # set ID3/APIC metadata for the file 
-    self._setFileMeta(fileLoc, track.songTitle, track.artist, track.album, track.trackNum, track.imgLoc)
+    self._setFileMeta(fileLoc, song.songTitle, song.artist, song.album, song.trackNum, song.imgLoc)
 
     self._totalCollected += 1
+    self.songsToDownload.remove(song)
     
     if startTime != None:
-      printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime, startAmount=len(self.songs) - len(self.songsToDownload))
+      printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime, startAmount=self._totalCollectedAtStart)
 
     return True
   #endregion
@@ -234,11 +250,12 @@ class Downloader:
     songsFromFile = self._deserializeSongsFile(libDataFileLoc)
 
     for song in songsFromFile:
-      self.songs[song.id] = song
+      if not song.id in self.songs:
+        self.songs[song.id] = song
       if song.fileLoc == "":
         self.songsToDownload.append(song)
         
-    if len(songsFromFile) == total:
+    if len(songsFromFile) == len(self.songs):
       if verbose: printProgress("Reading Spotify Library", total, total, startTime)
       return
 
@@ -281,37 +298,6 @@ class Downloader:
   
     # log our progress
     if verbose: printProgress("Reading Spotify Library", offset, total, startTime)
-
-  def _serializeSongsFile(self, dataFile, songs = None):
-    if songs == None:
-      songs = self.songs
-    
-    fileText = ""
-    
-    for s in songs.values():
-      fileText += s.toText()
-      
-    with open(dataFile, mode='w', encoding="utf-8") as f:
-      f.write(fileText)
-
-  def _deserializeSongsFile(self, dataFile, checkForMp3 = True):
-    if not os.path.exists(dataFile):
-      return []
-    
-    songsList = []
-    
-    with open(dataFile, 'r') as f:
-      for l in f.readlines():
-        s = Song.fromText(l)
-        
-        if checkForMp3 and s.fileLoc == "":
-          expectedFileLoc = s.getSaveLoc(self._options.outputDir) + '.mp3'
-          if os.path.exists( expectedFileLoc):
-            s.fileLoc = expectedFileLoc
-        
-        songsList.append(s)
-        
-    return songsList
 
   def _getPlaylistData(self, verbose: bool = True, max=-1):
     startTime = dt.now()
@@ -368,6 +354,13 @@ class Downloader:
             
             song = Song(id, songTitle, artist, album, duration, trackNumber, imgLoc)
             self.songs[id] = song
+            
+            songFileLoc = song.getSaveLoc(self._options.outputDir + ".mp3")
+            if not os.path.exists(songFileLoc):
+              self.songsToDownload.append(song)
+            else:
+              song.fileLoc = songFileLoc
+            
             playlistObj.songs.append(id)
         
         self.playlists[playlistObj.name] = playlistObj
@@ -392,10 +385,10 @@ class Downloader:
     '''
 
     # search youtube for the song
-    try:
-      s = yts.Search(F'{artist} {songTitle}')
-    except:
-      return None
+    s = yts.Search(F'{artist} {songTitle}')
+    # try:
+    # except Exception as e:
+    #   return None
 
     # instantiate vars for the closest match
     closestMatch = ''
@@ -426,12 +419,20 @@ class Downloader:
       # calculate the duration in ms 
       ytDuration = (mins * 60 + secs) * 1000
 
+      # check that the duration is not more or less than 5 seconds from what's expected
+      if abs(ytDuration - spDuration) > 5000:
+        continue
+
       # find the absolute difference between this video's duration and the spotify 
       #   track's duration and check if it is less than the current closest match 
       if abs(ytDuration - spDuration) < abs(closestDuration - spDuration):
         # if check succeeds, assign the duration and url to variables
         closestDuration = ytDuration
         closestMatch = ytItem['link']
+    
+    if closestMatch == '' and artist != '':
+      result = self._findYoutubeVideo(songTitle, '', spDuration)
+      return result if result != '' else None
     
     # once we've checked each option, return the closest match 
     return closestMatch
@@ -487,7 +488,7 @@ class Downloader:
       song = self.songs[trackid]
       fileStr += song.getM3uLine()
     
-    with open( os.path.join( outputDir, playlistObject.name + ".m3u"), 'w', encoding="utf-8" ) as f:
+    with open( os.path.join( outputDir, playlistObject.getFileName()), 'w', encoding="utf-8" ) as f:
       f.write( fileStr )
   #endregion
   
@@ -573,6 +574,46 @@ class Downloader:
       return False, ""
     return True, checkDir
 
+  def _serializeSongsFile( self, dataFile, songs=None ):
+    if songs == None:
+      songs = self.songs
+  
+    fileText = ""
+  
+    for s in songs.values():
+      fileText += s.toText()
+  
+    with open( dataFile, mode='w', encoding="utf-8" ) as f:
+      f.write( fileText )
+
+  def _deserializeSongsFile( self, dataFile, checkForMp3=True ):
+    if not os.path.exists( dataFile ):
+      return []
+  
+    songsList = []
+  
+    with open( dataFile, mode='r', encoding="utf-8" ) as f:
+      for l in f.readlines():
+        s = Song.fromText( l )
+      
+        if checkForMp3 and s.fileLoc == "":
+          expectedFileLoc = s.getSaveLoc( self._options.outputDir ) + '.mp3'
+          if os.path.exists( expectedFileLoc ):
+            s.fileLoc = expectedFileLoc
+      
+        songsList.append( s )
+  
+    return songsList
+  
+  def _saveFailedSongs( self ):
+    fileLoc = os.path.join(self._options.outputDir, '.data', 'failedToCollect.txt' )
+    fileTxt = ''
+    
+    for s in self.songsToDownload:
+      fileTxt += f'{s.artist} - {s.songTitle} ({s.error})\n'
+      
+    with open(fileLoc, 'w', encoding="utf-8") as f:
+      f.write(fileTxt)
   #endregion
 
 class DownloaderOptions:
@@ -643,6 +684,7 @@ class Song:
   duration = -1
   imgLoc = ""
   fileLoc = ""
+  error = ""
 
   def __init__(self, id, songTitle, artist, album, duration, trackNum, imgLoc, fileLoc = ""):
     self.id = id
@@ -695,3 +737,11 @@ class Playlist:
       .replace( '\\', ' ' ) \
       .replace( '/', ' ' ) \
       .replace( '?', ' ' )
+  
+  def getFileName( self ):
+    return self.name\
+      .replace( "<", "" ) \
+      .replace( ">", "" ) \
+      .replace( "\\", "" ) \
+      .replace( "/", "" ) \
+      + ".m3u"

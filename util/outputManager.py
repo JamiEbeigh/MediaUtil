@@ -8,7 +8,7 @@ def printProgress( message, completed, total, startTime, barLen=30, messagePad=3
 
   timeElapsed = dt.datetime.now() - startTime
   percentage = 0 if total == 0 else completed / total
-  timePercentage = 0 if total == 0 else (completed - startAmount) / (total-startAmount)
+  timePercentage = 0 if total - startAmount == 0 else (completed - startAmount) / (total-startAmount)
 
   timeLeft = "Estimating Time"
 
