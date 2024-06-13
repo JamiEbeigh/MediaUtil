@@ -1,3 +1,6 @@
 [submodule "util/modules/youtube-search-python"]
 	path = util/modules/youtube-search-python
 	url = https://github.com/JamiEbeigh/youtube-search-python.git
+[submodule "util/youtube-search-python"]
+	path = util/youtube-search-python
+	url = https://github.com/JamiEbeigh/youtube-search-python.git
