@@ -2,15 +2,16 @@ import os
 import sys
 import requests
 import asyncio
-from util.decorators import background
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-from util.outputManager import printProgress
-import util.youtubesearchpython.youtubesearchpython as yts
 import yt_dlp
+from spotipy.oauth2 import SpotifyOAuth
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC, TRCK
 from datetime import datetime as dt
+from util import CredentialsManager
+from util.decorators import background
+from util.outputManager import printProgress
+from util.youtubesearchpython import youtubesearchpython as yts
 
 class Downloader:
   '''
@@ -72,6 +73,14 @@ class Downloader:
     if collectPlaylists:
       # save playlists to .txt files
       self._saveAllPlaylists(verbose)
+  
+  def testYtsSearch( self ):
+    self._getLibraryData(True)
+    
+    for s in list(self.songs.values())[190:]:
+      searchText = F'{s.artist} {s.songTitle}'
+      print('searching', searchText)
+      result = yts.Search(searchText)
   
   #region downloadSongs
   def _downloadAllSongs(self, verbose=True, parallel=True):
@@ -383,10 +392,10 @@ class Downloader:
     '''
 
     # search youtube for the song
-    s = yts.Search(F'{artist} {songTitle}')
-    # try:
-    # except Exception as e:
-    #   return None
+    try:
+      s = yts.Search(F'{artist} {songTitle}')
+    except Exception as e:
+      return None
 
     # instantiate vars for the closest match
     closestMatch = ''
@@ -743,3 +752,20 @@ class Playlist:
       .replace( "\\", "" ) \
       .replace( "/", "" ) \
       + ".m3u"
+  
+  
+def __main__():
+  SpotifyCredentialsFile = "../dataFiles/SpotifyCredentials.txt"
+  
+  # get the client credentials
+  hasCreds, clientId, clientSecret = CredentialsManager.getSpotifyCredentials( SpotifyCredentialsFile )
+  
+  # check if the crednetials were retrieved successfully
+  if not hasCreds:
+    print( "Could not load spotify credentials from", SpotifyCredentialsFile )
+  
+  dl = Downloader( clientId, clientSecret, "../dataFiles/downloaderOptions.txt" )
+  #dl.downloadFullLibrary( True )
+  dl.testYtsSearch()
+
+__main__()
