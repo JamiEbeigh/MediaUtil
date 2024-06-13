@@ -7,7 +7,7 @@ from util.decorators import background
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from util.outputManager import printProgress
-import youtubesearchpython as yts
+import util.modules.youtubesearchpython as yts
 import youtube_dl
 import yt_dlp
 from mutagen.easyid3 import EasyID3
