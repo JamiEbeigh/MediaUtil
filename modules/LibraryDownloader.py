@@ -77,7 +77,7 @@ class Downloader:
   def testYtsSearch( self ):
     self._getLibraryData(True)
     
-    for s in list(self.songs.values())[190:]:
+    for s in list(self.songs.values())[790:]:
       searchText = F'{s.artist} {s.songTitle}'
       print('searching', searchText)
       result = yts.Search(searchText)
@@ -332,12 +332,12 @@ class Downloader:
         if verbose: verbose = printProgress("Collecting playlists", i + offset, playlistCount, startTime)
         
         # if this playlist has been saved in the last day, ignore it
-        playlistFile = os.path.join(playlistsDir, playlist['name'] + '.m3u')
-        if os.path.exists(playlistFile):
-          timestamp = os.path.getmtime(playlistFile)
-          datestamp = dt.fromtimestamp(timestamp)
-          if (datestamp - dt.now()).days < 1:
-            continue
+        # playlistFile = os.path.join(playlistsDir, playlist['name'] + '.m3u')
+        # if os.path.exists(playlistFile):
+        #   timestamp = os.path.getmtime(playlistFile)
+        #   datestamp = dt.fromtimestamp(timestamp)
+        #   if (datestamp - dt.now()).days < 1:
+        #     continue
         
         pi = self.sp.playlist(playlist['id'])
       
@@ -348,6 +348,9 @@ class Downloader:
           continue
 
         playlistObj = Playlist(pi['name'])
+        
+        if 'images' in pi and pi['images'] is not None and len(pi['images']) > 0:
+          playlistObj.imgUrl = pi['images'][0]['url']
         
         for t in pi['tracks']['items']:
           if (not 'track' in t) or (t['track'] == None):
@@ -489,7 +492,9 @@ class Downloader:
     if verbose: verbose = printProgress("Saving playlists", len(self.playlists), len(self.playlists), startTime)
 
   def _savePlaylistToFile(self, playlistObject, outputDir ):
-    fileStr = ""
+    fileStr = "#EXTM3U\n\n"
+    fileStr += f"#PLAYLIST:{playlistObject.name}\n\n"
+    #fileStr += f"EXTART:"
     
     for trackid in playlistObject.songs:
       song = self.songs[trackid]
@@ -726,7 +731,8 @@ class Song:
     return f"{self.id}|{self.songTitle}|{self.artist}|{self.album}|{self.duration}|{self.trackNum}|{self.imgLoc}|{self.fileLoc}\n"
 
   def getM3uLine(self):
-    return f'{self.artist}/{self.album}/{self.fileLoc}\n'
+    return f"#EXTINF:{int(self.duration / 1000)},{self.artist} - {self.songTitle}\n" \
+           f"{self.fileLoc}\n\n"
   
   def getSaveLoc(self, baseDir):
     artist = self.artist.replace(':', '')
@@ -738,6 +744,7 @@ class Song:
 class Playlist:
   name = ""
   songs = []
+  imgUrl = ""
   
   def __init__(self, name):
     self.name = name \
@@ -765,7 +772,7 @@ def __main__():
     print( "Could not load spotify credentials from", SpotifyCredentialsFile )
   
   dl = Downloader( clientId, clientSecret, "../dataFiles/downloaderOptions.txt" )
-  #dl.downloadFullLibrary( True )
-  dl.testYtsSearch()
+  dl.downloadFullLibrary( True )
+  # dl.testYtsSearch()
 
 __main__()
