@@ -5,3 +5,5 @@
 /.git/
 __pycache__/
 /output/downloader/**
+/dataFiles/
+/venv/
