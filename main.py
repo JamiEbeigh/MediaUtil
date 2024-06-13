@@ -2,7 +2,6 @@ from util import CredentialsManager
 from modules.PodcastCompiler import SpotifyPlaylistCompiler
 from modules.LibraryDownloader import Downloader
 
-
 SpotifyCredentialsFile = "./dataFiles/SpotifyCredentials.txt"
 CompilerDataFile = "./dataFiles/compilerData.txt"
 DownloaderOptions = "./dataFiles/downloaderOptions.txt"

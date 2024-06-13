@@ -2,13 +2,11 @@ import os
 import sys
 import requests
 import asyncio
-from util import CredentialsManager
 from util.decorators import background
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from util.outputManager import printProgress
-import util.modules.youtubesearchpython as yts
-import youtube_dl
+import util.youtubesearchpython.youtubesearchpython as yts
 import yt_dlp
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC, TRCK
