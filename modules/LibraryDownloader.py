@@ -8,9 +8,12 @@ from spotipy.oauth2 import SpotifyOAuth
 from mutagen.easyid3 import EasyID3
 from mutagen.id3 import ID3, APIC, TRCK
 from datetime import datetime as dt
+from Playlist import Playlist
+from Song import Song
 from util import CredentialsManager
 from util.decorators import background
 from util.outputManager import printProgress
+from util.outputManager import ensureDirectoryExists
 from util.youtubesearchpython import youtubesearchpython as yts
 
 class Downloader:
@@ -30,7 +33,7 @@ class Downloader:
 
   playlists = {}
   songs = {}
-  songsToDownload = []
+  songsToDownload = {}
   
   def __init__(self, clientId, clientSecret, optionsFile="" ):
     '''
@@ -93,7 +96,7 @@ class Downloader:
 
     startTime = dt.now()
     tracksDir = os.path.join(self._options.outputDir, "tracks")
-    tracksDirExists, trackDir = self._ensureDirectoryExists(tracksDir, self._options.outputDir)
+    tracksDirExists, trackDir = ensureDirectoryExists(tracksDir, self._options.outputDir)
 
     if verbose: verbose = printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime,
                                         startAmount=len(self.songs) - len(self.songsToDownload))
@@ -102,10 +105,10 @@ class Downloader:
     
     if parallel:
       loop = asyncio.get_event_loop()  # Have a new event loop
-      looper = asyncio.gather(*[self._downloadOneSongAsync(s, startTime) for s in self.songsToDownload])  # Run the loop
+      looper = asyncio.gather(*[self._downloadOneSongAsync(s, startTime) for s in self.songsToDownload.values()])  # Run the loop
       loop.run_until_complete(looper)
     else:
-      for s in self.songsToDownload:
+      for s in self.songsToDownload.values():
         self._downloadOneSong(s)
 
     self._saveFailedSongs()
@@ -127,7 +130,7 @@ class Downloader:
     # set the file name to <artist> - <title> but don't append the '.mp3' yet
     fileName = song.getSaveLoc(self._options.outputDir)
     albumDir = os.path.split(fileName)[0]
-    albumDirExists, albumDir = self._ensureDirectoryExists(albumDir, self._options.outputDir)
+    albumDirExists, albumDir = ensureDirectoryExists(albumDir, self._options.outputDir)
 
     if not albumDirExists:
       song.error = "Could not create artist/album directory"
@@ -153,7 +156,7 @@ class Downloader:
     self._setFileMeta(fileLoc, song.songTitle, song.artist, song.album, song.trackNum, song.imgLoc)
 
     self._totalCollected += 1
-    self.songsToDownload.remove(song)
+    del self.songsToDownload[song.id]
     
     if startTime != None:
       printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime, startAmount=self._totalCollectedAtStart)
@@ -162,70 +165,6 @@ class Downloader:
   #endregion
   
   #region spotify api
-  def _getTrackData(self, track):
-    '''
-    Get a few variables from the track object 
-
-    PARAMETERS:
-      track - the spotify object for the song
-    RETURNS:
-      songTitle - title of the song
-      artist - song's artist
-      album - album that the song belongs to
-      duration - song duration in miliseconds 
-      imgLoc - URL where the album cover can be retrieved from
-    '''
-    
-    if track['type'] == 'episode':
-      return None, None, None, None, None, None, None
-
-    id = track['id'] \
-      .replace('?', '') \
-      .replace('/', '') \
-      .replace('\\', '') \
-      .replace('\'', '') \
-      .replace('\"', '') \
-      .replace('.', '')
-
-    # get the song title, strip off any special chars
-    songTitle = track['name'] \
-      .replace('?', '') \
-      .replace('/', '') \
-      .replace('\\', '') \
-      .replace('\'', '') \
-      .replace('\"', '') \
-      .replace('.', '')
-
-    # get the primary artist name, strip off any special chars
-    artist = track['artists'][0]['name'] \
-      .replace('?', '') \
-      .replace('/', '') \
-      .replace('\\', '') \
-      .replace('\'', '') \
-      .replace('\"', '') \
-      .replace('.', '')
-
-    # get the album title, strip off any special chars
-    album = track['album']['name'] \
-      .replace('?', '') \
-      .replace('/', '') \
-      .replace('\\', '') \
-      .replace('\'', '') \
-      .replace('\"', '') \
-      .replace('.', '')
-
-    albumTotal = track['album']['total_tracks']
-    trackNum = track['track_number']
-
-    # get the track duration as an integer 
-    duration = int(track['duration_ms'])
-
-    # get the cover art URL
-    imgLoc = track['album']['images'][0]['url']
-
-    # return values
-    return id, songTitle, artist, album, duration, f'{trackNum:02}/{albumTotal:02}', imgLoc
-
   def _getLibraryData(self, verbose: bool = True, max=sys.maxsize):
     '''
     Retrieve all of a user's liked songs from the spotify api
@@ -259,8 +198,8 @@ class Downloader:
     for song in songsFromFile:
       if not song.id in self.songs:
         self.songs[song.id] = song
-      if song.fileLoc == "":
-        self.songsToDownload.append(song)
+      if song.fileLoc == "" and not song.id in self.songsToDownload:
+        self.songsToDownload[song.id] = song
         
     if len(songsFromFile) == len(self.songs):
       if verbose: printProgress("Reading Spotify Library", total, total, startTime)
@@ -279,12 +218,10 @@ class Downloader:
         # assign the track to a var
         track = item['track']
       
-        id, songTitle, artist, album, duration, trackNumber, imgLoc = self._getTrackData(track)
+        song = Song.fromApiObj(track)
         
-        if ( id == None ):
-          continue
+        if song == None: continue
         
-        song = Song(id, songTitle, artist, album, duration, trackNumber, imgLoc)
         expectedSongLoc = song.getSaveLoc(self._options.outputDir) + '.mp3'
         
         # make sure we don't have this song already
@@ -295,7 +232,7 @@ class Downloader:
           if os.path.exists(expectedSongLoc):
             song.fileLoc = expectedSongLoc
           else:
-            self.songsToDownload.append(song)
+            self.songsToDownload[song.id] = song
     
       # send the next request
       tracks = self.sp.current_user_saved_tracks(limit, offset)
@@ -306,79 +243,39 @@ class Downloader:
     # log our progress
     if verbose: printProgress("Reading Spotify Library", offset, total, startTime)
 
-  def _getPlaylistData(self, verbose: bool = True, max=-1):
+  def _getPlaylistData(self, verbose: bool = True):
     startTime = dt.now()
     
-    playlistsDir = os.path.join( self._options.outputDir, "playlists")
-    playlistsDirExists, playlistsDir = self._ensureDirectoryExists(playlistsDir, self._options.outputDir)
-    
-    existingPlaylists = os.listdir(playlistsDir)
-  
     # get listing of playlists and add their IDs as keys to the self.playlists dict
     limit = 50
     offset = 0
-    i = 0
   
     while True:
+      playlistGroup = self.sp.current_user_playlists(limit, offset)
+      playlistCount = playlistGroup['total']
     
-      pl = self.sp.current_user_playlists(limit, offset)
-      playlistCount = pl['total']
-    
-      for i, playlist in enumerate(pl['items']):
-        i += 1
-        if max != -1 and i > max:
-          break
-      
-        if verbose: verbose = printProgress("Collecting playlists", i + offset, playlistCount, startTime)
+      for j, playlist in enumerate(playlistGroup['items']):
+        if verbose: verbose = printProgress("Collecting Playlist Data", j + offset, playlistCount, startTime)
         
-        # if this playlist has been saved in the last day, ignore it
-        # playlistFile = os.path.join(playlistsDir, playlist['name'] + '.m3u')
-        # if os.path.exists(playlistFile):
-        #   timestamp = os.path.getmtime(playlistFile)
-        #   datestamp = dt.fromtimestamp(timestamp)
-        #   if (datestamp - dt.now()).days < 1:
-        #     continue
-        
-        pi = self.sp.playlist(playlist['id'])
-      
-        if pi['name'] in self._options.excludePlaylists:
-          continue
-        
-        if self._options.onlyMyPlaylists and pi['owner']['display_name'] != self._spCurrentUser:
+        # check if we should ignore this playlist based on user options
+        if (playlist['name'] in self._options.excludePlaylists) or \
+           (self._options.onlyMyPlaylists and playlist['owner']['display_name'] != self._spCurrentUser):
           continue
 
-        playlistObj = Playlist(pi['name'])
+        playlistObj = Playlist.fromSpotify(playlist, self.songs, self.sp)
+      
+        for song in playlistObj.playlistSongs:
+          if not song.id in self.songs:
+            self.songs[song.id] = song
+          if not song.tryFindMp3(self._options.outputDir):
+            self.songsToDownload[song.id] = song
         
-        if 'images' in pi and pi['images'] is not None and len(pi['images']) > 0:
-          playlistObj.imgUrl = pi['images'][0]['url']
-        
-        for t in pi['tracks']['items']:
-          if (not 'track' in t) or (t['track'] == None):
-            continue
-          track = t['track']
-          if not track['id'] in self.songs:
-            id, songTitle, artist, album, duration, trackNumber, imgLoc = self._getTrackData(track)
-
-            if (id == None):
-              continue
-            
-            song = Song(id, songTitle, artist, album, duration, trackNumber, imgLoc)
-            self.songs[id] = song
-            
-            songFileLoc = song.getSaveLoc(self._options.outputDir + ".mp3")
-            if not os.path.exists(songFileLoc):
-              self.songsToDownload.append(song)
-            else:
-              song.fileLoc = songFileLoc
-            
-            playlistObj.songs.append(id)
-        
-        self.playlists[playlistObj.name] = playlistObj
+        self.playlists[playlistObj.id] = playlistObj
     
       offset += limit
-      if offset > playlistCount + limit or i > max >= 0: break
+      if offset > playlistCount + limit: break
   
-    if verbose: verbose = printProgress("Collecting playlists", i + offset, playlistCount, startTime)
+    if verbose: verbose = printProgress("Collecting Playlist Data", playlistCount, playlistCount, startTime)
   #endregion
   
   #region youtube download
@@ -483,25 +380,15 @@ class Downloader:
     startTime = dt.now()
     playlistsDir = os.path.join( self._options.outputDir, "playlists")
 
-    playlistsDirExists, playlistsDir = self._ensureDirectoryExists(playlistsDir, self._options.outputDir)
+    playlistsDirExists, playlistsDir = ensureDirectoryExists(playlistsDir, self._options.outputDir)
 
     for i, id in enumerate(self.playlists):
       if verbose: verbose = printProgress("Saving playlists", i+1, len(self.playlists), startTime)
+      
       pl = self.playlists[id]
-      self._savePlaylistToFile(pl, playlistsDir)
-    if verbose: verbose = printProgress("Saving playlists", len(self.playlists), len(self.playlists), startTime)
+      pl.saveToFile(playlistsDir)
+    if verbose: printProgress("Saving playlists", len(self.playlists), len(self.playlists), startTime)
 
-  def _savePlaylistToFile(self, playlistObject, outputDir ):
-    fileStr = "#EXTM3U\n\n"
-    fileStr += f"#PLAYLIST:{playlistObject.name}\n\n"
-    #fileStr += f"EXTART:"
-    
-    for trackid in playlistObject.songs:
-      song = self.songs[trackid]
-      fileStr += song.getM3uLine()
-    
-    with open( os.path.join( outputDir, playlistObject.getFileName()), 'w', encoding="utf-8" ) as f:
-      f.write( fileStr )
   #endregion
   
   #region file management
@@ -516,9 +403,7 @@ class Downloader:
       album - album title
       coverUrl - link to the album cover (retrieved from spotify)
     '''
-  
-    track, totalTracks = trackNum.split('/')
-  
+    
     # set the ID3 data using mutigen
     c = EasyID3(fileLoc + '.mp3')
     c.clear()  # clear all current tags before assigning new ones
@@ -526,7 +411,7 @@ class Downloader:
     c['artist'] = artist
     c['album'] = album
     c['albumartist'] = artist
-    c['TRCK']: track
+    c['TRCK']: trackNum
     c.save()
   
     # send a get request to retrieve the cover art
@@ -540,51 +425,9 @@ class Downloader:
       type=3, desc=u'Cover',
       data=cover_data
     )
-    c['TRCK'] = TRCK(encoding=3, text=track)
+    c['TRCK'] = TRCK(encoding=3, text=str(trackNum))
   
     c.save()
-
-  def _ensureDirectoryExists(self, dir, baseDir = ""):
-    # remove the filename from the dir if it has one
-    absDir = os.path.abspath(dir)
-    outputDirAbs =  os.path.abspath(self._options.outputDir)
-
-    # before we do all this other work, just check if the path exists and return True if it does
-    if os.path.exists(dir):
-      return True, dir
-
-    # if the base dir is not set, try to set it either to the output dir defined in the options,
-    #   or by getting the absolute path and replacing anything not in the dir var
-    if baseDir == "":
-      # if the dir is a child of the class's output dir
-      if dir.startswith(outputDirAbs):
-        # set the base dir to the output dir
-        baseDir = outputDirAbs
-        dir = absDir[len(outputDirAbs):]
-      else:
-        # get the absolute path from the dir var, then take everything in front of it
-        baseDir = absDir[:absDir.find(dir)]
-
-    # if the base dir can't be found, return false
-    if not os.path.exists(baseDir):
-      return False, ""
-
-    dirParts = dir.replace(baseDir, "").split( os.sep )
-    checkDir = baseDir
-
-    try:
-      for oneFolder in dirParts:
-        oneFolder = oneFolder.replace(':', '')
-
-        checkDir = os.path.join(checkDir, oneFolder)
-
-        if os.path.exists(checkDir):
-          continue
-
-        os.mkdir(checkDir)
-    except:
-      return False, ""
-    return True, checkDir
 
   def _serializeSongsFile( self, dataFile, songs=None ):
     if songs == None:
@@ -621,7 +464,7 @@ class Downloader:
     fileLoc = os.path.join(self._options.outputDir, '.data', 'failedToCollect.txt' )
     fileTxt = ''
     
-    for s in self.songsToDownload:
+    for s in self.songsToDownload.values():
       fileTxt += f'{s.artist} - {s.songTitle} ({s.error})\n'
       
     with open(fileLoc, 'w', encoding="utf-8") as f:
@@ -688,79 +531,7 @@ class loggerOutputs:
         # print("Captured Log: "+msg)
         pass
 
-class Song:
-  id = ""
-  songTitle = ""
-  artist = ""
-  album = ""
-  duration = -1
-  imgLoc = ""
-  fileLoc = ""
-  error = ""
 
-  def __init__(self, id, songTitle, artist, album, duration, trackNum, imgLoc, fileLoc = ""):
-    self.id = id
-    self.songTitle = songTitle.replace("|", '')
-    self.artist = artist.replace("|", '')
-    self.album = album.replace("|", '')
-    self.duration = duration
-    self.trackNum = trackNum
-    self.imgLoc = imgLoc
-    self.fileLoc = fileLoc
-
-  @staticmethod
-  def fromText(line):
-    line = line.strip('\n')
-    lineParts = line.split('|')
-
-    if len(lineParts) != 8:
-      return None
-
-    id = lineParts[0]
-    songTitle = lineParts[1]
-    artist = lineParts[2]
-    album = lineParts[3]
-    duration = int(lineParts[4])
-    trackNum = lineParts[5]
-    imgLoc = lineParts[6]
-    fileLoc = lineParts[7]
-
-    return Song( id, songTitle, artist, album, duration, trackNum, imgLoc, fileLoc )
-
-  def toText(self):
-    return f"{self.id}|{self.songTitle}|{self.artist}|{self.album}|{self.duration}|{self.trackNum}|{self.imgLoc}|{self.fileLoc}\n"
-
-  def getM3uLine(self):
-    return f"#EXTINF:{int(self.duration / 1000)},{self.artist} - {self.songTitle}\n" \
-           f"{self.fileLoc}\n\n"
-  
-  def getSaveLoc(self, baseDir):
-    artist = self.artist.replace(':', '')
-    album = self.album.replace(':', '')
-    title = self.songTitle.replace(';', '')
-    
-    return os.path.join(baseDir, "tracks", artist, album, title)
-  
-class Playlist:
-  name = ""
-  songs = []
-  imgUrl = ""
-  
-  def __init__(self, name):
-    self.name = name \
-      .replace( '\\', ' ' ) \
-      .replace( '/', ' ' ) \
-      .replace( '?', ' ' )
-  
-  def getFileName( self ):
-    return self.name\
-      .replace( "<", "" ) \
-      .replace( ">", "" ) \
-      .replace( "\\", "" ) \
-      .replace( "/", "" ) \
-      + ".m3u"
-  
-  
 def __main__():
   SpotifyCredentialsFile = "../dataFiles/SpotifyCredentials.txt"
   

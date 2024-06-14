@@ -1,4 +1,4 @@
-﻿
+﻿import os
 import math
 import datetime as dt
 from token import PERCENT
@@ -40,4 +40,30 @@ def printProgress( message, completed, total, startTime, barLen=30, messagePad=3
     )
     return False
   return True
+
+
+def ensureDirectoryExists(dir, baseDir):
+  # before we do all this other work, just check if the path exists and return True if it does
+  if os.path.exists(dir):
+    return True, dir
   
+  # if the base dir can't be found, return false
+  if not os.path.exists(baseDir):
+    return False, ""
+  
+  dirParts = dir.replace(baseDir, "").split(os.sep)
+  checkDir = baseDir
+  
+  try:
+    for oneFolder in dirParts:
+      oneFolder = oneFolder.replace(':', '')
+      
+      checkDir = os.path.join(checkDir, oneFolder)
+      
+      if os.path.exists(checkDir):
+        continue
+      
+      os.mkdir(checkDir)
+  except:
+    return False, ""
+  return True, checkDir

@@ -56,6 +56,16 @@ Clone the git repo
 git clone https://github.com/JamiEbeigh/SpotiUtil.git
 ```
 
+This project imports another project of mine (a fork of 
+[youtube-search-python](https://github.com/alexmercerind/youtube-search-python)) 
+as a submodule. There's a chance that it wasn't added when cloning the repo, 
+so to ensure that it is added, run:
+
+```commandline
+git submodule init
+git submodule update
+```
+
 ### Step 3: Install Python Requirements
 
 Install Python Venv, create a virtual environment, then activate it
