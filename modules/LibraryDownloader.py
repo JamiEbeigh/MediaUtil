@@ -1,12 +1,12 @@
 import os
 import sys
-import requests
 import asyncio
 import spotipy
 import yt_dlp
+import multiprocessing
+import threading
+from queue import Queue
 from spotipy.oauth2 import SpotifyOAuth
-from mutagen.easyid3 import EasyID3
-from mutagen.id3 import ID3, APIC, TRCK
 from datetime import datetime as dt
 from Playlist import Playlist
 from Song import Song
@@ -85,6 +85,10 @@ class Downloader:
       print('searching', searchText)
       result = yts.Search(searchText)
   
+  def testGetLyrics(self):
+    self._getLibraryData()
+    self.getLyrics()
+  
   #region downloadSongs
   def _downloadAllSongs(self, verbose=True, parallel=True):
     '''
@@ -151,9 +155,9 @@ class Downloader:
       return False
     
     song.fileLoc = os.path.abspath(fileLoc)
-
-    # set ID3/APIC metadata for the file 
-    self._setFileMeta(fileLoc, song.songTitle, song.artist, song.album, song.trackNum, song.imgLoc)
+    
+    # set ID3/APIC metadata for the file
+    song.setFileMeta()
 
     self._totalCollected += 1
     del self.songsToDownload[song.id]
@@ -201,7 +205,7 @@ class Downloader:
       if song.fileLoc == "" and not song.id in self.songsToDownload:
         self.songsToDownload[song.id] = song
         
-    if len(songsFromFile) == len(self.songs):
+    if len(songsFromFile) != 0 and len(songsFromFile) == len(self.songs):
       if verbose: printProgress("Reading Spotify Library", total, total, startTime)
       return
 
@@ -225,9 +229,9 @@ class Downloader:
         expectedSongLoc = song.getSaveLoc(self._options.outputDir) + '.mp3'
         
         # make sure we don't have this song already
-        if not id in self.songs:
+        if not song.id in self.songs:
           # add this song to the songs dict, indexed by its spotify id
-          self.songs[id] = song
+          self.songs[song.id] = song
           
           if os.path.exists(expectedSongLoc):
             song.fileLoc = expectedSongLoc
@@ -391,44 +395,50 @@ class Downloader:
 
   #endregion
   
-  #region file management
-  def _setFileMeta(self, fileLoc, title, artist, album, trackNum, coverUrl):
-    '''
-    Set the ID3 and APIC data for an mp3 file to the values pulled from spotify
+  #region get lyrics
+  def getLyrics(self):
+    printProgress("Collecting Lyrics", 0, len(self.songs), dt.now())
 
-    PARAMETERS:
-      fileLoc - the mp3 file to be modified
-      title - song title
-      artist - song artist
-      album - album title
-      coverUrl - link to the album cover (retrieved from spotify)
-    '''
+    x = [0]
+    threadCount = 32
+    totalCount = 0
     
-    # set the ID3 data using mutigen
-    c = EasyID3(fileLoc + '.mp3')
-    c.clear()  # clear all current tags before assigning new ones
-    c['title'] = title
-    c['artist'] = artist
-    c['album'] = album
-    c['albumartist'] = artist
-    c['TRCK']: trackNum
-    c.save()
-  
-    # send a get request to retrieve the cover art
-    cover_data = requests.get(coverUrl).content
-  
-    # embed the cover art in the file
-    c = ID3(fileLoc + '.mp3')
-    c['APIC'] = APIC(
-      encoding=3,
-      mime='image/jpeg',
-      type=3, desc=u'Cover',
-      data=cover_data
-    )
-    c['TRCK'] = TRCK(encoding=3, text=str(trackNum))
-  
-    c.save()
+    q = Queue()
+    lock = threading.Lock()
+    
+    for s in self.songs.values():
+      if not s.tryFindLyrics():
+        q.put(s)
+        totalCount += 1
+    
+    startTime = dt.now()
+    threads = [threading.Thread(target=lambda:self.oneGetLyricsLoop(q, lock, x, startTime, totalCount)) for i in range(threadCount)]
+    
+    for t in threads:
+      t.start()
+      
+    for t in threads:
+      t.join()
+    
+  def oneGetLyricsLoop(self, q:Queue, lock, countList = None, startTime = None, totalToCollect=-1):
+    while True:
+      with lock:
+        if q.empty():
+          return
+        
+        song = q.get()
+        countList[0]+=1
+        i = countList[0]
+      
+      if i % 10 == 0 and countList != None and startTime != None and totalToCollect > 0:
+        prevCollected = len( self.songs ) - totalToCollect
+        printProgress("Collecting Lyrics", prevCollected + i, len( self.songs ), startTime, startAmount=prevCollected)
+        
+      song.getLyrics()
 
+  #endregion
+  
+  #region file management
   def _serializeSongsFile( self, dataFile, songs=None ):
     if songs == None:
       songs = self.songs
@@ -543,7 +553,8 @@ def __main__():
     print( "Could not load spotify credentials from", SpotifyCredentialsFile )
   
   dl = Downloader( clientId, clientSecret, "../dataFiles/downloaderOptions.txt" )
-  dl.downloadFullLibrary( True )
+  #dl.downloadFullLibrary( True )
   # dl.testYtsSearch()
+  dl.testGetLyrics()
 
 __main__()
