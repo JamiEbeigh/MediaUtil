@@ -10,7 +10,7 @@ from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime as dt
 from Playlist import Playlist
 from Song import Song
-from util import CredentialsManager
+from util.UtilOptions import UtilOptions
 from util.decorators import background
 from util.outputManager import printProgress
 from util.outputManager import ensureDirectoryExists
@@ -21,9 +21,6 @@ class Downloader:
   Download your full spotify library
   '''
 
-  _ClientId = ""
-  _ClientSecret = ""
-  _OutputDir = ""
   _RedirectUri = "http://localhost:8080"
   _Scope = "user-library-read playlist-read-private"
   _options = None
@@ -35,7 +32,7 @@ class Downloader:
   songs = {}
   songsToDownload = {}
   
-  def __init__(self, clientId, clientSecret, optionsFile="" ):
+  def __init__(self, options ):
     '''
     Initialize a Downloader class
 
@@ -46,12 +43,10 @@ class Downloader:
     '''
 
     # assign private vars
-    self._ClientId = clientId
-    self._ClientSecret = clientSecret
-    self._options = DownloaderOptions(optionsFile)
+    self._options = options
 
     # get authenticated spotify client
-    self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=self._ClientId, client_secret=self._ClientSecret,
+    self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=options.spotifyClientId, client_secret=options.spotifyClientSecret,
                                                         redirect_uri=self._RedirectUri, scope=self._Scope))
 
     # get the name of the current spotify user
@@ -99,8 +94,8 @@ class Downloader:
     self._totalCollectedAtStart = self._totalCollected
 
     startTime = dt.now()
-    tracksDir = os.path.join(self._options.outputDir, "tracks")
-    tracksDirExists, trackDir = ensureDirectoryExists(tracksDir, self._options.outputDir)
+    tracksDir = os.path.join(self._options.musicDir, "tracks")
+    tracksDirExists, trackDir = ensureDirectoryExists(tracksDir, self._options.musicDir)
 
     if verbose: verbose = printProgress("Downloading Songs", self._totalCollected, len(self.songs), startTime,
                                         startAmount=len(self.songs) - len(self.songsToDownload))
@@ -116,7 +111,7 @@ class Downloader:
         self._downloadOneSong(s)
 
     self._saveFailedSongs()
-    self._serializeSongsFile(os.path.join(self._options.outputDir, ".data", "songs.txt"))
+    self._serializeSongsFile(os.path.join(self._options.musicDir, ".data", "songs.txt"))
 
   @background
   def _downloadOneSongAsync( self, song, startTime=None ):
@@ -132,9 +127,9 @@ class Downloader:
     '''
 
     # set the file name to <artist> - <title> but don't append the '.mp3' yet
-    fileName = song.getSaveLoc(self._options.outputDir)
+    fileName = song.getSaveLoc(self._options.musicDir)
     albumDir = os.path.split(fileName)[0]
-    albumDirExists, albumDir = ensureDirectoryExists(albumDir, self._options.outputDir)
+    albumDirExists, albumDir = ensureDirectoryExists(albumDir, self._options.musicDir)
 
     if not albumDirExists:
       song.error = "Could not create artist/album directory"
@@ -196,7 +191,7 @@ class Downloader:
     total = tracks['total']
 
     # get data from file
-    libDataFileLoc = os.path.join(self._options.outputDir, ".data", "songs.txt")
+    libDataFileLoc = os.path.join(self._options.musicDir, ".data", "songs.txt")
     songsFromFile = self._deserializeSongsFile(libDataFileLoc)
 
     for song in songsFromFile:
@@ -226,7 +221,7 @@ class Downloader:
         
         if song == None: continue
         
-        expectedSongLoc = song.getSaveLoc(self._options.outputDir) + '.mp3'
+        expectedSongLoc = song.getSaveLoc(self._options.musicDir) + '.mp3'
         
         # make sure we don't have this song already
         if not song.id in self.songs:
@@ -271,7 +266,7 @@ class Downloader:
         for song in playlistObj.playlistSongs:
           if not song.id in self.songs:
             self.songs[song.id] = song
-          if not song.tryFindMp3(self._options.outputDir):
+          if not song.tryFindMp3(self._options.musicDir):
             self.songsToDownload[song.id] = song
         
         self.playlists[playlistObj.id] = playlistObj
@@ -382,9 +377,9 @@ class Downloader:
   #region save playlists
   def _saveAllPlaylists(self, verbose:bool=True):
     startTime = dt.now()
-    playlistsDir = os.path.join( self._options.outputDir, "playlists")
+    playlistsDir = os.path.join( self._options.musicDir, "playlists")
 
-    playlistsDirExists, playlistsDir = ensureDirectoryExists(playlistsDir, self._options.outputDir)
+    playlistsDirExists, playlistsDir = ensureDirectoryExists(playlistsDir, self._options.musicDir)
 
     for i, id in enumerate(self.playlists):
       if verbose: verbose = printProgress("Saving playlists", i+1, len(self.playlists), startTime)
@@ -462,7 +457,7 @@ class Downloader:
         s = Song.fromText( l )
       
         if checkForMp3 and s.fileLoc == "":
-          expectedFileLoc = s.getSaveLoc( self._options.outputDir ) + '.mp3'
+          expectedFileLoc = s.getSaveLoc( self._options.musicDir ) + '.mp3'
           if os.path.exists( expectedFileLoc ):
             s.fileLoc = expectedFileLoc
       
@@ -471,7 +466,7 @@ class Downloader:
     return songsList
   
   def _saveFailedSongs( self ):
-    fileLoc = os.path.join(self._options.outputDir, '.data', 'failedToCollect.txt' )
+    fileLoc = os.path.join(self._options.musicDir, '.data', 'failedToCollect.txt' )
     fileTxt = ''
     
     for s in self.songsToDownload.values():
@@ -480,55 +475,6 @@ class Downloader:
     with open(fileLoc, 'w', encoding="utf-8") as f:
       f.write(fileTxt)
   #endregion
-
-class DownloaderOptions:
-  excludePlaylists = []
-  outputDir = "output/downloader/"
-  onlyMyPlaylists = False
-
-  def __init__(self, dataFile=""):
-    if dataFile == "" or not os.path.exists(dataFile):
-      return
-
-    with open(dataFile, 'r') as f:
-      for l in f.readlines():
-        splitIndex = l.find( "=" )
-        key = l[:splitIndex].strip(" \n")
-        val = l[splitIndex+1:].strip(" \n")
-
-        if key == "outputDir":
-          self.outputDir = str(val).strip('\"\' ')
-        if key == "onlyMyPlaylists":
-          self.onlyMyPlaylists = val.upper().strip('\"\' ') == "TRUE"
-        if key == "excludePlaylists":
-          self.excludePlaylists = self.parseList(val)
-  def parseList(self, valStr):
-    valsList = []
-    val = ""
-    i = 0
-    quote = False
-    
-    while i < len(valStr):
-      char = valStr[i]
-      
-      if char == '\"' or char == '\'':
-        quote = not quote
-        continue
-      
-      if char == ',' and not quote:
-        valsList.append(val.strip(' '))
-        val = ""
-        i += 1
-        continue
-      
-      if char == '\\':
-        i += 1
-        char = valStr[i]
-      
-      val += char
-      i += 1
-    
-    return valsList
 
 class loggerOutputs:
     def error(msg):
@@ -543,17 +489,10 @@ class loggerOutputs:
 
 
 def __main__():
-  SpotifyCredentialsFile = "../dataFiles/SpotifyCredentials.txt"
+  o = UtilOptions( "../dataFiles/options.txt" )
+  dl = Downloader( o )
   
-  # get the client credentials
-  hasCreds, clientId, clientSecret = CredentialsManager.getSpotifyCredentials( SpotifyCredentialsFile )
-  
-  # check if the crednetials were retrieved successfully
-  if not hasCreds:
-    print( "Could not load spotify credentials from", SpotifyCredentialsFile )
-  
-  dl = Downloader( clientId, clientSecret, "../dataFiles/downloaderOptions.txt" )
-  #dl.downloadFullLibrary( True )
+  # dl.downloadFullLibrary( True )
   # dl.testYtsSearch()
   dl.testGetLyrics()
 

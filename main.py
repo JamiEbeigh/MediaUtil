@@ -1,32 +1,17 @@
-from util import CredentialsManager
 from modules.PodcastCompiler import SpotifyPlaylistCompiler
 from modules.LibraryDownloader import Downloader
+from util.UtilOptions import UtilOptions
 
-SpotifyCredentialsFile = "./dataFiles/SpotifyCredentials.txt"
 CompilerDataFile = "./dataFiles/compilerData.txt"
-DownloaderOptions = "./dataFiles/downloaderOptions.txt"
+optionsFile = "./dataFiles/options.txt"
 
-def runDownloader():
-  # get the client credentials
-  hasCreds, clientId, clientSecret = CredentialsManager.getSpotifyCredentials(SpotifyCredentialsFile)
-  
-  # check if the crednetials were retrieved successfully
-  if not hasCreds:
-    print("Could not load spotify credentials from", SpotifyCredentialsFile)
-
-  dl = Downloader( clientId, clientSecret, DownloaderOptions)
+def runDownloader( options ):
+  dl = Downloader(options)
   dl.downloadFullLibrary( True )
 
-def runCompiler():
-  # get the client credentials
-  success, clientId, clientSecret = CredentialsManager.getSpotifyCredentials(SpotifyCredentialsFile)
-  
-  # check if the crednetials were retrieved successfully
-  if not success:
-    print("Could not load spotify credentials from", SpotifyCredentialsFile)
-    
+def runCompiler(options ):
   # instantiate the class
-  pc = SpotifyPlaylistCompiler(CompilerDataFile, clientId, clientSecret)
+  pc = SpotifyPlaylistCompiler(CompilerDataFile, options.spotifyClientId, options.spotifyClientSecret)
 
   # add podcasts to playlist
   pc.addAllPodcastsToPlaylist()
@@ -34,11 +19,17 @@ def runCompiler():
   # update and save the datafile
   pc.updateDataFile()
 
+def runMkvConvert(options):
+  pass
+
 
 def main():
+  options = UtilOptions(optionsFile)
+  
   print("Which module would you like to use?")
   print("1: Spotify Downloader (Offline your entire spotify library)")
   print("2: Podcast Compiler (Add all your podcasts to one playlist)")
+  print("3: MKV Converter (Convert MKV files to MP4)")
   
   choice = input()
   
@@ -49,9 +40,11 @@ def main():
   
   match choice:
     case 1:
-      runDownloader()
+      runDownloader(options)
     case 2:
-      runCompiler()
+      runCompiler(options)
+    case 3:
+      runMkvConvert(options)
 
 
 def test():
