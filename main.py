@@ -60,5 +60,8 @@ def main(*args):
       runCompiler(options)
     case 3:
       runMkvConvert(options)
+    case -1:
+      runDownloader(options)
+      runCompiler(options)
 
 main()
