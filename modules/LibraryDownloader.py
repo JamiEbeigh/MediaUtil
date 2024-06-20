@@ -8,8 +8,8 @@ import threading
 from queue import Queue
 from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime as dt
-from Playlist import Playlist
-from Song import Song
+from modules.Playlist import Playlist
+from modules.Song import Song
 from util.UtilOptions import UtilOptions
 from util.decorators import background
 from util.outputManager import printProgress
@@ -496,4 +496,5 @@ def __main__():
   # dl.testYtsSearch()
   dl.testGetLyrics()
 
-__main__()
+if __name__ == '__main__':
+  __main__()

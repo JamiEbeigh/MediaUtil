@@ -1,6 +1,6 @@
 import os
 import requests
-from Song import Song
+from modules.Song import Song
 from util.outputManager import ensureDirectoryExists
 
 

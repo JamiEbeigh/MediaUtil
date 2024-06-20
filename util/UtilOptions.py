@@ -7,6 +7,7 @@ class UtilOptions:
   spotifyClientId=""
   spotifyClientSecret=""
   moviesDir=""
+  compilerData="./dataFiles/compilerData.txt"
   
   def __init__(self, dataFile=""):
     if dataFile == "" or not os.path.exists(dataFile):
@@ -19,18 +20,30 @@ class UtilOptions:
         if key == "" or val == "":
           continue
         
-        if key == "musicDir":
-          self.musicDir = val
-        elif key == "onlyMyPlaylists":
-          self.onlyMyPlaylists = val.upper() == "TRUE"
-        elif key == "excludePlaylists":
-          self.excludePlaylists = val
-        elif key == "spotifyClientId":
-          self.spotifyClientId = val
-        elif key == "spotifyClientSecret":
-          self.spotifyClientSecret = val
-        elif key == "moviesDir":
-          self.moviesDir = val
+        match key:
+          case 'musicDir':
+            self.musicDir = val
+            break
+          case "onlyMyPlaylists":
+            self.onlyMyPlaylists = val.upper() == "TRUE"
+            break
+          case "excludePlaylists":
+            self.excludePlaylists = val
+            break
+          case "spotifyClientId":
+            self.spotifyClientId = val
+            break
+          case "spotifyClientSecret":
+            self.spotifyClientSecret = val
+            break
+          case "moviesDir":
+            self.moviesDir = val
+            break
+          case 'compilerData':
+            self.compilerData = val
+            break
+          case _:
+            break
   
   def parseLine(self, l):
     i = 0
