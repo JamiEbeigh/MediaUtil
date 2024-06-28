@@ -40,7 +40,7 @@ class SpotifyPlaylistCompiler:
     self.getPlaylistItems()
     self.removePodcastsFromPlaylist()
     self.addAllPodcastsToPlaylist()
-    # self.updateDataFile()
+    self.updateDataFile()
   
   def getPlaylistItems(self):
     limit = 100
