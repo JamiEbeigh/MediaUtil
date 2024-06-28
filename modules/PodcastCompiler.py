@@ -90,7 +90,8 @@ class SpotifyPlaylistCompiler:
     # loop through each episode
     for newEp in eps["items"]:
       # get the ID and release date
-      epId = newEp["uri"]
+      epId = newEp["id"]
+      uri = newEp['uri']
       releaseDate = datetime.strptime(newEp["release_date"], '%Y-%m-%d')
       
       # ignore the episode if it was released before the start date specified in the datafile
@@ -119,7 +120,7 @@ class SpotifyPlaylistCompiler:
           break # break the loop if it is
       
       # add the episode to the playlist at the index that just found
-      self.sp.playlist_add_items(self.playlistId, [epId], index)
+      self.sp.playlist_add_items(self.playlistId, [uri], index)
       # add the episode to the list of existing episodes
       self.playlist_dates.insert(index, (epId, releaseDate))
   
@@ -138,10 +139,10 @@ class SpotifyPlaylistCompiler:
   
   def updateDataFile(self):
     # define a tmp file location
-    tmpFile = self.options.compilerDataFile + '.tmp'
+    tmpFile = self.options.compilerData + '.tmp'
     
     # open the datafile and assign it to a line array
-    f = open(self.options.compilerDataFile, 'r+')
+    f = open(self.options.compilerData, 'r+')
     lines = f.readlines()
     
     # change the first line to today's date
@@ -156,9 +157,9 @@ class SpotifyPlaylistCompiler:
     f.close()
   
     # delete the original datafile
-    os.remove(self.options.compilerDataFile)
+    os.remove(self.options.compilerData)
     # rename the tmp file as the datafile
-    os.rename(tmpFile, self.options.compilerDataFile)
+    os.rename(tmpFile, self.options.compilerData)
   
   
 def main():
