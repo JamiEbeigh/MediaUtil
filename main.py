@@ -8,16 +8,11 @@ def runDownloader( options ):
   dl.downloadFullLibrary( True )
 
 def runCompiler(options ):
-  # instantiate the class
-  pc = SpotifyPlaylistCompiler(options.compilerData, options.spotifyClientId, options.spotifyClientSecret)
+  # instantiate the class and run the process
+  pc = SpotifyPlaylistCompiler(options)
+  pc.runCompileProcess()
 
-  # add podcasts to playlist
-  pc.addAllPodcastsToPlaylist()
-  
-  # update and save the datafile
-  pc.updateDataFile()
-
-def runMkvConvert(options):
+def runImportShows(options):
   pass
 
 def parseArgs():
@@ -59,7 +54,7 @@ def main(*args):
     case 2:
       runCompiler(options)
     case 3:
-      runMkvConvert(options)
+      runImportShows(options)
     case -1:
       runDownloader(options)
       runCompiler(options)

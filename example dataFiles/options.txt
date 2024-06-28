@@ -1,0 +1,15 @@
+
+# Podcast Compiler
+compilerData="./dataFiles/compilerData.txt"
+
+# Spotify Downloader
+spotifyClientId=
+spotifyClientSecret=
+musicDir=
+onlyMyPlaylists=True
+excludePlaylists=[Discover Weekly]
+
+# Show Importer
+moviesDir=
+tvDir=
+toImportDir=

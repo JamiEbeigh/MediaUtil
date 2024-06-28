@@ -23,27 +23,18 @@ class UtilOptions:
         match key:
           case 'musicDir':
             self.musicDir = val
-            break
           case "onlyMyPlaylists":
             self.onlyMyPlaylists = val.upper() == "TRUE"
-            break
           case "excludePlaylists":
             self.excludePlaylists = val
-            break
           case "spotifyClientId":
             self.spotifyClientId = val
-            break
           case "spotifyClientSecret":
             self.spotifyClientSecret = val
-            break
           case "moviesDir":
             self.moviesDir = val
-            break
           case 'compilerData':
             self.compilerData = val
-            break
-          case _:
-            break
   
   def parseLine(self, l):
     i = 0
