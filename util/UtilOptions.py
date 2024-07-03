@@ -1,6 +1,8 @@
 import os
 
 class UtilOptions:
+  scope = "playlist-modify-private playlist-read-private user-library-read user-read-playback-position"
+  redirectUri = "http://localhost:8080"
   excludePlaylists = []
   musicDir = "output/downloader/"
   onlyMyPlaylists = False
@@ -8,10 +10,16 @@ class UtilOptions:
   spotifyClientSecret=""
   moviesDir=""
   compilerData="./dataFiles/compilerData.txt"
+  podcastPlaylist=''
+  podcasts=[]
+  daysToWaitBeforeRemoving=-1
   
   def __init__(self, dataFile=""):
-    if dataFile == "" or not os.path.exists(dataFile):
+    if dataFile == "":
       return
+    
+    if not os.path.exists(dataFile):
+      dataFile = os.path.join('../', dataFile)
     
     with open(dataFile, 'r') as f:
       for l in f.readlines():
@@ -24,7 +32,8 @@ class UtilOptions:
           case 'musicDir':
             self.musicDir = val
           case "onlyMyPlaylists":
-            self.onlyMyPlaylists = val.upper() == "TRUE"
+            b = val.upper()[0]
+            self.onlyMyPlaylists = b == 'T' or b == '1'
           case "excludePlaylists":
             self.excludePlaylists = val
           case "spotifyClientId":
@@ -35,6 +44,12 @@ class UtilOptions:
             self.moviesDir = val
           case 'compilerData':
             self.compilerData = val
+          case 'podcasts':
+            self.podcasts = val
+          case 'podcastPlaylist':
+            self.podcastPlaylist = val
+          case 'daysToWaitBeforeRemoving':
+            self.daysToWaitBeforeRemoving = int(val)
   
   def parseLine(self, l):
     i = 0

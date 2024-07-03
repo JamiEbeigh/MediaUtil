@@ -21,8 +21,6 @@ class Downloader:
   Download your full spotify library
   '''
 
-  _RedirectUri = "http://localhost:8080"
-  _Scope = "user-library-read playlist-read-private"
   _options = None
   _spCurrentUser = ""
   _totalCollected = 0
@@ -47,7 +45,7 @@ class Downloader:
 
     # get authenticated spotify client
     self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=options.spotifyClientId, client_secret=options.spotifyClientSecret,
-                                                        redirect_uri=self._RedirectUri, scope=self._Scope))
+                                                        redirect_uri=self._options.redirectUri, scope=self._options.scope))
 
     # get the name of the current spotify user
     u = self.sp.current_user()

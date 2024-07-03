@@ -2,33 +2,27 @@ import os
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 from datetime import datetime
+import json
+
+from util.UtilOptions import UtilOptions
 
 
 # PodcastCompiler
 # A tool used to compile all episodes from numerous podcasts into a single playlist
 class SpotifyPlaylistCompiler:
   options = None
-  redirectUri = "http://localhost:8080"
-  scope = "playlist-modify-private user-library-read user-read-playback-position"
+  toDelete = {}
   
   def __init__(self, options):
     # assign parameters to isntance variables
     self.options = options
     
-    # open the input file
-    f = open(options.compilerData).readlines()
+    self.parseCompilerData()
     
-    self.startDate = datetime.strptime(f[0].strip(), '%Y-%m-%d') # date to start collecting podcasts from (last date this program was run)
-    self.playlistId = f[1] # Spotify ID for the playlist that episodes will be added to
-    self.podcastIds = [] # Spotify IDs for podcasts that will be added to the playlist
-    
-    # iterate through lines in the file, starting at line 3
-    for line in f[2:]:
-      self.podcastIds.append(line.strip()) # add each subsequent line (Podcast URIs) to a list
-      
     # get authenticated spotify client
+    
     self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=self.options.spotifyClientId, client_secret=self.options.spotifyClientSecret,
-                                                        redirect_uri=self.redirectUri, scope=self.scope))
+                                                        redirect_uri=self.options.redirectUri, scope=self.options.scope))
     
     # instantiate a list of the episode URIs and dates in the current playlist
     self.playlistCurrent_ids = []
@@ -48,7 +42,7 @@ class SpotifyPlaylistCompiler:
     
     while True:
       # get al the current items in the playlist
-      playlistCurrent = self.sp.playlist_items(self.playlistId, limit=limit, offset=offset)
+      playlistCurrent = self.sp.playlist_items(self.options.podcastPlaylist, limit=limit, offset=offset)
       
       offset += limit
       
@@ -80,9 +74,14 @@ class SpotifyPlaylistCompiler:
         
         duration = e['duration_ms']
         
-        if e['resume_point']['fully_played'] or e['resume_point']['resume_position_ms'] > duration * .95:
-          self.toRemove_uris.append(uri)
-  
+        played = e['resume_point']['fully_played'] or e['resume_point']['resume_position_ms'] > duration * .95
+        
+        if uri in self.toDelete and not played:
+          del self.toDelete[uri]
+        
+        if played and not uri in self.toDelete:
+          self.toDelete[uri] = datetime.now().strftime('%Y-%m-%d')
+        
   def addOnePodcastToPlaylist(self, podcastUid):
     # get list of episodes for this podcast
     eps = self.sp.show_episodes(podcastUid)
@@ -120,53 +119,63 @@ class SpotifyPlaylistCompiler:
           break # break the loop if it is
       
       # add the episode to the playlist at the index that just found
-      self.sp.playlist_add_items(self.playlistId, [uri], index)
+      self.sp.playlist_add_items(self.options.podcastPlaylist, [uri], index)
       # add the episode to the list of existing episodes
       self.playlist_dates.insert(index, (epId, releaseDate))
   
   def addAllPodcastsToPlaylist(self):
     # iterate through podcasts loaded during instantiation
-    for podId in self.podcastIds:
+    for podId in self.options.podcasts:
       # add all episodes of that podcast to the playlist
       self.addOnePodcastToPlaylist(podId)
   
   def removePodcastsFromPlaylist(self):
-    chunks = [self.toRemove_uris[i:i+50] for i in range(0, len(self.toRemove_uris), 50)]
+    toRemove = []
+    
+    for uri, dateStr in self.toDelete.items():
+      date = datetime.strptime(dateStr,'%Y-%m-%d')
+      if (datetime.now() - date).days > self.options.daysToWaitBeforeRemoving:
+        toRemove.append(uri)
+        del self.toDelete[uri]
+    
+    chunks = [toRemove[i:i+50] for i in range(0, len(toRemove), 50)]
     
     for chunk in chunks:
-      r = self.sp.playlist_remove_all_occurrences_of_items(self.playlistId, chunk)
-      pass
+      self.sp.playlist_remove_all_occurrences_of_items(self.options.podcastPlaylist, chunk)
+
+  def parseCompilerData(self):
+    if not os.path.exists(self.options.compilerData):
+      self.options.compilerData = os.path.join('../', self.options.compilerData)
+    
+    f = open(self.options.compilerData)
+  
+    try:
+      obj = json.load(f)
+    
+      self.startDate = datetime.strptime( obj['startDate'], '%Y-%m-%d' )
+      self.toDelete = obj['toDelete']
+    except:
+      self.startDate = datetime.now()
   
   def updateDataFile(self):
-    # define a tmp file location
-    tmpFile = self.options.compilerData + '.tmp'
+    obj = {
+      'startDate': datetime.now().strftime('%Y-%m-%d'),
+      'toDelete': self.toDelete
+    }
     
-    # open the datafile and assign it to a line array
-    f = open(self.options.compilerData, 'r+')
-    lines = f.readlines()
+    objStr = json.dumps( obj, sort_keys=False, indent=2 )
     
-    # change the first line to today's date
-    lines[0] = datetime.now().strftime('%Y-%m-%d') + "\n"
-  
-    # create the tmp file and write to it
-    tmp = open(tmpFile, 'w')
-    tmp.write(''.join(lines))
-  
-    # close both files
-    tmp.close()
+    f = open( self.options.compilerData, 'w' )
+    f.write(objStr)
     f.close()
-  
-    # delete the original datafile
-    os.remove(self.options.compilerData)
-    # rename the tmp file as the datafile
-    os.rename(tmpFile, self.options.compilerData)
-  
+    
   
 def main():
-  # instantiate the compiler class
-  pc = SpotifyPlaylistCompiler("compilerData.txt")
-  pc.addAllPodcastsToPlaylist()
-  pc.updateDataFile()
+  optionsFile = "./dataFiles/options.txt"
+  options = UtilOptions(optionsFile)
+  
+  pc = SpotifyPlaylistCompiler(options)
+  pc.runCompileProcess()
   
 
 if __name__ == "__main__":
