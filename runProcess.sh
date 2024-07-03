@@ -1,4 +1,5 @@
 #! /bin/bash
 
-source /hom/jam/SpotiUtil/env/bin/activate
+source /home/jam/SpotiUtil/env/bin/activate
 
+python3 main.py 2
