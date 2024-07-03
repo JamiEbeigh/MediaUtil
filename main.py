@@ -56,7 +56,9 @@ def main(*args):
     case 3:
       runImportShows(options)
     case 0:
+      print( "RUNNING DOWNLOADER" )
       runDownloader(options)
+      print( "RUNNING COMPILER" )
       runCompiler(options)
 
 main()
