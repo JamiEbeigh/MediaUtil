@@ -1,6 +1,8 @@
 import os
 import spotipy
+import uuid
 from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyPKCE
 from datetime import datetime
 import json
 
@@ -20,9 +22,8 @@ class SpotifyPlaylistCompiler:
     self.parseCompilerData()
     
     # get authenticated spotify client
-    
     self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(client_id=self.options.spotifyClientId, client_secret=self.options.spotifyClientSecret,
-                                                        redirect_uri=self.options.redirectUri, scope=self.options.scope))
+                                                        redirect_uri=self.options.redirectUri, scope=self.options.scope, open_browser=False))
     
     # instantiate a list of the episode URIs and dates in the current playlist
     self.playlistCurrent_ids = []
@@ -35,8 +36,11 @@ class SpotifyPlaylistCompiler:
     self.removePodcastsFromPlaylist()
     self.addAllPodcastsToPlaylist()
     self.updateDataFile()
+    print("Done!")
   
   def getPlaylistItems(self):
+    print( "Getting playlist info" )
+    
     limit = 100
     offset = 0
     
@@ -124,12 +128,14 @@ class SpotifyPlaylistCompiler:
       self.playlist_dates.insert(index, (epId, releaseDate))
   
   def addAllPodcastsToPlaylist(self):
+    print( "Adding new episodes")
     # iterate through podcasts loaded during instantiation
     for podId in self.options.podcasts:
       # add all episodes of that podcast to the playlist
       self.addOnePodcastToPlaylist(podId)
   
   def removePodcastsFromPlaylist(self):
+    print( "Removing old episodes")
     toRemove = []
     
     for uri, dateStr in self.toDelete.items():
