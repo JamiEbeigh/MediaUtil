@@ -1,9 +1,9 @@
 #! /bin/bash
 
 current_date_time=$(date)
-echo "Running MediaUtil process at " + $current_date_time"
+echo "Running MediaUtil process at $current_date_time"
 
-cd /home/jam/SpotiUtil
+cd /home/jam/MediaUtil
 touch cronOutput.txt
 source env/bin/activate
 

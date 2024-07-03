@@ -137,12 +137,14 @@ class SpotifyPlaylistCompiler:
   def removePodcastsFromPlaylist(self):
     print( "Removing old episodes")
     toRemove = []
-    
-    for uri, dateStr in self.toDelete.items():
+    items = self.toDelete.items()
+    for uri, dateStr in items:
       date = datetime.strptime(dateStr,'%Y-%m-%d')
-      if (datetime.now() - date).days > self.options.daysToWaitBeforeRemoving:
+      if (datetime.now() - date).days >= self.options.daysToWaitBeforeRemoving:
         toRemove.append(uri)
-        del self.toDelete[uri]
+    
+    for uri in toRemove:
+      del self.toDelete[uri]
     
     chunks = [toRemove[i:i+50] for i in range(0, len(toRemove), 50)]
     
