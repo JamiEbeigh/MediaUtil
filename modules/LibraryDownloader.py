@@ -452,11 +452,9 @@ class Downloader:
     with open( dataFile, mode='r', encoding="utf-8" ) as f:
       for l in f.readlines():
         s = Song.fromText( l )
-      
-        if checkForMp3 and s.fileLoc == "":
-          expectedFileLoc = s.getSaveLoc( self._options.musicDir ) + '.mp3'
-          if os.path.exists( expectedFileLoc ):
-            s.fileLoc = expectedFileLoc
+        
+        if checkForMp3:
+          s.tryFindMp3(self._options.musicDir)
       
         songsList.append( s )
   

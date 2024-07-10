@@ -16,7 +16,7 @@ class Song:
   fileLoc = ""
   error = ""
   
-  def __init__(self, id, songTitle, artist, album, duration, trackNum, imgLoc, fileLoc=""):
+  def __init__(self, id='', songTitle='', artist='', album='', duration=-1, trackNum=-1, imgLoc='', fileLoc=""):
     self.id = id
     self.songTitle = songTitle.replace("|", '')
     self.artist = artist.replace("|", '')
@@ -34,16 +34,18 @@ class Song:
     if len(lineParts) != 8:
       return None
     
-    id = lineParts[0]
-    songTitle = lineParts[1]
-    artist = lineParts[2]
-    album = lineParts[3]
-    duration = int(lineParts[4])
-    trackNum = lineParts[5]
-    imgLoc = lineParts[6]
-    fileLoc = lineParts[7]
+    s = Song()
     
-    return Song(id, songTitle, artist, album, duration, trackNum, imgLoc, fileLoc)
+    s.id = lineParts[0]
+    s.songTitle = lineParts[1]
+    s.artist = lineParts[2]
+    s.album = lineParts[3]
+    s.duration = int(lineParts[4])
+    s.trackNum = lineParts[5]
+    s.imgLoc = lineParts[6]
+    s.fileLoc = lineParts[7]
+    
+    return s
   
   @staticmethod
   def fromApiObj(apiObj):
@@ -117,6 +119,9 @@ class Song:
     return os.path.join(baseDir, "tracks", artist, album, title)
   
   def tryFindMp3(self, outputDir):
+    if self.fileLoc != '' and os.path.exists( self.fileLoc ):
+      return True
+    
     songFileLoc = self.getSaveLoc(outputDir) + ".mp3"
     
     if os.path.exists(songFileLoc):
