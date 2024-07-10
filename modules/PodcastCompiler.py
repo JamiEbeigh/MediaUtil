@@ -138,6 +138,7 @@ class SpotifyPlaylistCompiler:
     print( "Removing old episodes")
     toRemove = []
     items = self.toDelete.items()
+    
     for uri, dateStr in items:
       date = datetime.strptime(dateStr,'%Y-%m-%d')
       if (datetime.now() - date).days >= self.options.daysToWaitBeforeRemoving:

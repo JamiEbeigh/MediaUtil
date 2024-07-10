@@ -123,7 +123,6 @@ class Downloader:
       track - the spotify object for the song
       alreadyDownloaded - a list of "<artist> - <song title>" containing the songs which have already been downloaded
     '''
-
     # set the file name to <artist> - <title> but don't append the '.mp3' yet
     fileName = song.getSaveLoc(self._options.musicDir)
     albumDir = os.path.split(fileName)[0]
@@ -147,7 +146,7 @@ class Downloader:
       song.error = "Error downloading song from YouTube"
       return False
     
-    song.fileLoc = os.path.abspath(fileLoc)
+    song.fileLoc = os.path.abspath(fileLoc) + '.mp3'
     
     # set ID3/APIC metadata for the file
     song.setFileMeta()
@@ -383,7 +382,7 @@ class Downloader:
       if verbose: verbose = printProgress("Saving playlists", i+1, len(self.playlists), startTime)
       
       pl = self.playlists[id]
-      pl.saveToFile(playlistsDir)
+      pl.saveToFile(playlistsDir, self._options.musicDir)
     if verbose: printProgress("Saving playlists", len(self.playlists), len(self.playlists), startTime)
 
   #endregion
@@ -490,9 +489,7 @@ def __main__():
   o = UtilOptions( "../dataFiles/options.txt" )
   dl = Downloader( o )
   
-  # dl.downloadFullLibrary( True )
-  # dl.testYtsSearch()
-  dl.testGetLyrics()
-
+  dl.downloadFullLibrary( True )
+  
 if __name__ == '__main__':
   __main__()

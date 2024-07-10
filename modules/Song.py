@@ -99,7 +99,8 @@ class Song:
   def toText(self):
     return f"{self.id}|{self.songTitle}|{self.artist}|{self.album}|{self.duration}|{self.trackNum}|{self.imgLoc}|{self.fileLoc}\n"
   
-  def getM3uLine(self):
+  def getM3uLine(self, outputDir):
+    self.tryFindMp3(outputDir)
     return f"#EXTINF:{int(self.duration / 1000)},{self.artist} - {self.songTitle}\n" \
            f"{self.fileLoc}\n\n"
   
@@ -121,6 +122,7 @@ class Song:
     if os.path.exists(songFileLoc):
       self.fileLoc = songFileLoc
       return True
+    self.fileLoc = ""
     return False
   
   def tryFindLyrics(self):
@@ -143,6 +145,9 @@ class Song:
       coverUrl - link to the album cover (retrieved from spotify)
     '''
   
+    if not self.fileLoc.endswith('.mp3'):
+      self.fileLoc = self.fileLoc + '.mp3'
+      
     # set the ID3 data using mutigen
     c = EasyID3(self.fileLoc)
     c.clear()  # clear all current tags before assigning new ones

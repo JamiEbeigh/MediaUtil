@@ -48,6 +48,7 @@ class Playlist:
       offset += len(playlistTracks['items'])
       playlistTracks = sp.playlist_items(apiObj['id'], offset=offset)
     return playlistObj
+  
   def getFileName(self, includeExtension=True):
     return self.name \
       .replace("<", "") \
@@ -56,7 +57,7 @@ class Playlist:
       .replace("/", "") \
       + (".m3u" if includeExtension else "")
   
-  def saveToFile(self, outputDir):
+  def saveToFile(self, outputDir, musicDir):
     fileStr = "#EXTM3U\n\n"
     fileStr += f"#PLAYLIST:{self.name}\n\n"
     
@@ -70,12 +71,12 @@ class Playlist:
       with open(str(coverImgLoc), mode='wb') as f:
         f.write(cover_data)
       
-      fileStr += f"EXTIMG:{coverImgName}"
+      fileStr += f"EXTIMG:{coverImgName}\n\n"
     except:
       pass
     
     for song in self.playlistSongs:
-      fileStr += song.getM3uLine()
+      fileStr += song.getM3uLine(musicDir)
     
     with open(os.path.join(outputDir, self.getFileName()), 'w', encoding="utf-8") as f:
       f.write(fileStr)
