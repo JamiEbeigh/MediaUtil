@@ -9,7 +9,7 @@ source env/bin/activate
 
 printf "\n\n\n\n"
 
-python3 main.py 2
+python3 main.py 0
 
 current_date_time=$(date)
 echo "Finished MediaUtil process at $current_date_time"
