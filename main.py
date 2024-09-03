@@ -58,6 +58,7 @@ def main(*args):
     case 0:
       print( "RUNNING DOWNLOADER" )
       runDownloader(options)
+      print()
       print( "RUNNING COMPILER" )
       runCompiler(options)
 
