@@ -85,6 +85,8 @@ class SpotifyPlaylistCompiler:
         
         if played and not uri in self.toDelete:
           self.toDelete[uri] = datetime.now().strftime('%Y-%m-%d')
+    
+    self.updateDataFile()
         
   def addOnePodcastToPlaylist(self, podcastUid):
     # get list of episodes for this podcast
@@ -103,7 +105,7 @@ class SpotifyPlaylistCompiler:
         
       duration = newEp['duration_ms']
       
-      if newEp['resume_point']['fully_played'] or newEp['resume_point']['resume_position_ms'] > duration * .95:
+      if newEp['resume_point']['resume_position_ms'] > duration * .95:
         continue
 
       
@@ -153,11 +155,17 @@ class SpotifyPlaylistCompiler:
       self.sp.playlist_remove_all_occurrences_of_items(self.options.podcastPlaylist, chunk)
 
   def parseCompilerData(self):
-    if not os.path.exists(self.options.compilerData):
-      self.options.compilerData = os.path.join('../', self.options.compilerData)
+    parentPath = os.path.join('../', self.options.compilerData)
+    if not os.path.exists(self.options.compilerData) and os.path.exists(parentPath):
+      self.options.compilerData = parentPath
+      self.options.writeToDisk()
+    
+    if not os.path.exists( self.options.compilerData ):
+      self.updateDataFile()
+      return
     
     f = open(self.options.compilerData)
-  
+    
     try:
       obj = json.load(f)
     

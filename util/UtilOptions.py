@@ -1,6 +1,7 @@
 import os
 
 class UtilOptions:
+  _saveLoc = ""
   scope = "playlist-modify-private playlist-read-private user-library-read user-read-playback-position"
   redirectUri = "http://localhost:8080"
   excludePlaylists = []
@@ -9,7 +10,7 @@ class UtilOptions:
   spotifyClientId=""
   spotifyClientSecret=""
   moviesDir=""
-  compilerData="./dataFiles/compilerData.txt"
+  compilerData="./dataFiles/compilerData.json"
   podcastPlaylist=''
   podcasts=[]
   daysToWaitBeforeRemoving=-1
@@ -18,8 +19,15 @@ class UtilOptions:
     if dataFile == "":
       return
     
-    if not os.path.exists(dataFile):
-      dataFile = os.path.join('../', dataFile)
+    self._saveLoc = dataFile
+    
+    parentPath = os.path.join('../', dataFile)
+    if not os.path.exists(dataFile) and os.path.exists(parentPath):
+      dataFile = parentPath
+    
+    if not os.path.exists( dataFile ):
+      self.writeToDisk()
+      return
     
     with open(dataFile, 'r') as f:
       for l in f.readlines():
@@ -116,3 +124,25 @@ class UtilOptions:
       i += 1
     
     return valsList
+
+  def writeToDisk(self):
+    outStr = ""
+    attrList = ['musicDir', "onlyMyPlaylists", "excludePlaylists", "spotifyClientId", "spotifyClientSecret",
+                "moviesDir", 'compilerData', 'podcasts', 'podcastPlaylist', 'daysToWaitBeforeRemoving']
+    
+    for attr in attrList:
+      val = getattr(self, attr)
+      
+      if isinstance(val, str):
+        outStr += f"{attr}='{val}'"
+      elif isinstance(val, (int, float)):
+        outStr += f"{attr}={val}"
+      elif isinstance(val, list):
+        outStr += f"{attr}=[{','.join( val )}]"
+      elif isinstance(val, bool):
+        outStr += f"{attr}={'TRUE' if val else 'FALSE'}"
+      
+      outStr += '\n'
+      
+    with open( self._saveLoc, 'w' ) as f:
+      f.write(outStr)
