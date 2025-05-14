@@ -1,6 +1,14 @@
 # SpotiUtil
 A command line tool to complete various tasks using the Spotify API
 
+## Developer note:
+I've decided to drastically broaden the scope of this application and as a result, 
+this repository is no longer maintained. Instead, I am rebuilding the project with 
+a whole host of new features that will be geared more towards managing a home media
+server; think Plex, but less bloated. Some of the features in this project may be 
+moved to my personal site (also not currently public), but for more info on this 
+project specifically you can check out my [MediaUtil2 repository](https://github.com/JamiEbeigh/mediautil2). 
+
 ## Disclaimer
 This is straight up piracy. This program does absolutely violates Spotify's
 terms of use. The likelihood that anything actually results from using this
