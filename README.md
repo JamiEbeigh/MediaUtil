@@ -9,13 +9,6 @@ server; think Plex, but less bloated. Some of the features in this project may b
 moved to my personal site (also not currently public), but for more info on this 
 project specifically you can check out my [MediaUtil2 repository](https://github.com/JamiEbeigh/mediautil2). 
 
-## Disclaimer
-This is straight up piracy. This program does absolutely violates Spotify's
-terms of use. The likelihood that anything actually results from using this
-is very low, however you should be informed of the risks. There is a possibility 
-that your spotify account may be banned or you API access may be revoked. Use 
-at your own risk. 
-
 ## Prerequisites
 * **Python** (I did my testing with version 3.11)
 * **Git** (or some method of cloning the repo)
@@ -113,3 +106,4 @@ to `datafiles`
 
 
  
+
